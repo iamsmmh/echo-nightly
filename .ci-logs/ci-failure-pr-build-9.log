@@ -1,0 +1,112 @@
+Downloading https://services.gradle.org/distributions/gradle-9.0.0-bin.zip
+............10%.............20%.............30%.............40%.............50%............60%.............70%.............80%.............90%.............100%
+
+Welcome to Gradle 9.0.0!
+
+Here are the highlights of this release:
+ - Configuration Cache is the recommended execution mode
+ - Gradle requires JVM 17 or higher to run
+ - Build scripts use Kotlin 2.2 and Groovy 4.0
+ - Improved Kotlin DSL script compilation avoidance
+
+For more details see https://docs.gradle.org/9.0.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: assembleRelease
+
+> Configure project :common
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :composeApp
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Task :app:preBuild UP-TO-DATE
+> Task :common:androidPreBuild UP-TO-DATE
+> Task :common:preAndroidMainBuild UP-TO-DATE
+> Task :common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :common:mergeAndroidMainJniLibFolders
+> Task :app:buildKotlinToolingMetadata
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :common:mergeAndroidMainNativeLibs NO-SOURCE
+
+> Task :app:checkReleaseDuplicateClasses
+WARNING: [Processor] Library '/home/runner/.gradle/caches/modules-2/files-2.1/androidx.media3/media3-session/1.8.0/e28b8a1b7941dd4c4da264d5e622274e7c8e6488/media3-session-1.8.0.aar' contains references to both AndroidX and old support library. This seems like the library is partially migrated. Jetifier will try to rewrite the library anyway.
+ Example of androidX reference: 'androidx/media3/session/legacy/LegacyParcelableUtil'
+ Example of support library reference: 'android/support/v4/media/MediaDescriptionCompat'
+
+> Task :common:copyAndroidMainJniLibsProjectOnly
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:generateReleaseResValues
+> Task :app:extractReleaseSupportedLocales
+> Task :app:generateReleaseResources
+> Task :common:generateAndroidMainEmptyResourceFiles
+> Task :app:generateReleaseBuildConfig
+> Task :common:writeAndroidMainAarMetadata
+> Task :app:dataBindingMergeDependencyArtifactsRelease
+> Task :app:generateReleaseLocaleConfig
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:checkReleaseAarMetadata
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :common:processAndroidMainManifest
+> Task :app:packageReleaseResources
+> Task :app:processReleaseMainManifest
+> Task :app:parseReleaseLocalResources
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractProguardFiles
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:javaPreCompileRelease
+> Task :common:prepareLintJarForPublish
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :common:extractAndroidMainAnnotations
+> Task :app:mergeReleaseResources
+> Task :app:dataBindingGenBaseClassesRelease
+> Task :app:processReleaseResources
+
+> Task :common:compileAndroidMain FAILED
+e: file:///home/runner/work/echo-nightly/echo-nightly/common/src/jvmCommon/kotlin/dev/brahmkshatriya/echo/common/models/EchoFileJvm.kt:10:12 'absolutePath' overrides nothing.
+e: file:///home/runner/work/echo-nightly/echo-nightly/common/src/jvmCommon/kotlin/dev/brahmkshatriya/echo/common/models/EchoFileJvm.kt:11:12 'name' overrides nothing.
+e: file:///home/runner/work/echo-nightly/echo-nightly/common/src/jvmCommon/kotlin/dev/brahmkshatriya/echo/common/models/EchoFileJvm.kt:12:12 'parent' overrides nothing.
+
+[Incubating] Problems report is available at: file:///home/runner/work/echo-nightly/echo-nightly/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':common:compileAndroidMain'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 2m 3s
+41 actionable tasks: 41 executed
+Configuration cache entry stored.
