@@ -60,18 +60,22 @@ jobs:
 
       - name: Compile Kotlin for iOS targets
         run: |
+          set -o pipefail
           ./gradlew :composeApp:compileKotlinIosArm64 \
                     :composeApp:compileKotlinIosSimulatorArm64 \
                     :composeApp:compileKotlinIosX64 \
-                    :common:compileKotlinIosArm64 --stacktrace
+                    :common:compileKotlinIosArm64 --stacktrace 2>&1 | tee /tmp/ci.log
 
       - name: Link debug frameworks (simulator + device)
         run: |
+          set -o pipefail
           ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 \
-                    :composeApp:linkDebugFrameworkIosArm64 --stacktrace
+                    :composeApp:linkDebugFrameworkIosArm64 --stacktrace 2>&1 | tee -a /tmp/ci.log
 
       - name: Run shared unit tests on iOS simulator
-        run: ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace 2>&1 | tee -a /tmp/ci.log
 
       - name: Build iOS app for the simulator (Xcode project build)
         run: |
@@ -82,7 +86,7 @@ jobs:
             -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            build | xcpretty
+            build 2>&1 | tee -a /tmp/ci.log | xcpretty
 
       - name: Run iOS host tests (XCTest, launches the app in the simulator)
         run: |
@@ -93,7 +97,7 @@ jobs:
             -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            test | xcpretty
+            test 2>&1 | tee -a /tmp/ci.log | xcpretty
 
       - name: Archive unsigned app (generic iOS device, unsigned for sideloading)
         run: |
@@ -128,6 +132,26 @@ jobs:
           unzip -t build/ipa/Echo-iOS-unsigned.ipa > /dev/null
           echo "IPA OK"
           ls -la build/ipa
+
+
+      - name: Report build errors to the PR
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### ❌ ${{ github.workflow }} / iOS failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            grep -hE "^e: |error: |Execution failed for task|Could not|Unresolved reference|problem found" /tmp/ci.log 2>/dev/null | sort -u | head -120 || true
+            echo '```'
+            echo
+            echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/report.md
+          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d @/tmp/payload.json > /dev/null || true
 
       - name: Upload unsigned IPA artifact
         if: always()

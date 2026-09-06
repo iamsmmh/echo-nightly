@@ -21,11 +21,31 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build & test shared modules (Android/JVM compile + unit tests)
         run: |
+          set -o pipefail
           chmod +x ./gradlew
           ./gradlew :common:assemble \
                     :composeApp:assembleDebug \
                     :composeApp:testDebugUnitTest \
-                    --stacktrace
+                    --stacktrace 2>&1 | tee /tmp/ci.log
+
+      - name: Report build errors to the PR
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### ❌ ${{ github.workflow }} / shared-code failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            grep -hE "^e: |error: |Execution failed for task|Could not|Unresolved reference|problem found" /tmp/ci.log 2>/dev/null | sort -u | head -120 || true
+            echo '```'
+            echo
+            echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/report.md
+          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d @/tmp/payload.json > /dev/null || true
 
   ios-framework:
     name: Kotlin Multiplatform iOS framework (all targets)
@@ -40,6 +60,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Compile & link every iOS target
         run: |
+          set -o pipefail
           chmod +x ./gradlew
           ./gradlew :common:compileKotlinIosX64 \
                     :common:compileKotlinIosArm64 \
@@ -48,7 +69,7 @@ jobs:
                     :composeApp:linkDebugFrameworkIosArm64 \
                     :composeApp:linkDebugFrameworkIosSimulatorArm64 \
                     :composeApp:linkReleaseFrameworkIosSimulatorArm64 \
-                    --stacktrace
+                    --stacktrace 2>&1 | tee /tmp/ci.log
       - name: Verify the framework contains the audio bridge
         run: |
           FRAMEWORK=$(find composeApp/build/bin -type d -name 'ComposeApp.framework' | head -1)
@@ -59,3 +80,22 @@ jobs:
           grep -q "MainViewController" "$HEADER"
           grep -q "EchoIosBridge" "$HEADER"
           echo "Framework exports the expected API"
+
+      - name: Report build errors to the PR
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### ❌ ${{ github.workflow }} / ios-framework failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            grep -hE "^e: |error: |Execution failed for task|Could not|Unresolved reference|problem found" /tmp/ci.log 2>/dev/null | sort -u | head -120 || true
+            echo '```'
+            echo
+            echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/report.md
+          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d @/tmp/payload.json > /dev/null || true

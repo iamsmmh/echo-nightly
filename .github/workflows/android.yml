@@ -32,13 +32,38 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build common + composeApp (Android targets)
-        run: ./gradlew :common:assemble :composeApp:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :common:assemble :composeApp:assembleDebug --stacktrace 2>&1 | tee /tmp/ci.log
 
       - name: Run shared unit tests (commonTest via Android target)
-        run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :composeApp:testDebugUnitTest --stacktrace 2>&1 | tee -a /tmp/ci.log
 
       - name: Build the Android app (regression check)
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace 2>&1 | tee -a /tmp/ci.log
+
+      - name: Report build errors to the PR
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            grep -hE "^e: |error: |Execution failed for task|Could not|Unresolved reference|problem found" /tmp/ci.log 2>/dev/null | sort -u | head -120 || true
+            echo '```'
+            echo
+            echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > /tmp/report.md
+          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d @/tmp/payload.json > /dev/null || true
 
       - name: Upload app APK
         if: always()
