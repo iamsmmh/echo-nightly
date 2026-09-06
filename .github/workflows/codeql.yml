@@ -7,6 +7,7 @@ on:
     branches: [ main ]
   schedule:
     - cron: '32 4 * * 1'   # weekly, Mondays 04:32 UTC
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -15,7 +16,7 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze (Kotlin)
+    name: Analyze (Kotlin / Java)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -32,29 +33,19 @@ jobs:
           distribution: 'zulu'
           java-version: 17
 
+      # Extraction needs an instrumented build. For a Gradle/Kotlin repo this
+      # means letting CodeQL drive the build (autobuild), NOT a `build-mode:
+      # none` + out-of-band Gradle call (which yields no source). The Compose
+      # / KMP layout is analysed through the JVM and Android compilations.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          # We drive extraction with a real Gradle JVM build (below) so CodeQL
-          # sees the resolved Kotlin/Java bytecode.
-          build-mode: none
 
       - name: Autobuild
-        id: autobuild
-        uses: github/codeql-action/autobuild@v3
-        continue-on-error: true
-
-      # If autobuild did not produce a database (KMP repos sometimes confuse it),
-      # fall back to compiling the shared :common module on the JVM target, which
-      # is guaranteed to exist and yields bytecode CodeQL can analyse.
-      - name: Compile shared JVM sources (fallback build)
-        if: steps.autobuild.outcome == 'failure'
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :common:compileKotlinJvm --no-daemon --stacktrace 2>&1 | tail -40 || echo "analysis build degraded; continuing"
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{matrix.language}}"
