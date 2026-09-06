@@ -64,7 +64,7 @@ class DefaultStreamResolver(
         val extension = runtime.extensionFor(item.extensionId)
             ?: throw EchoError.Extension("Extension '${item.extensionId}' is not available")
 
-        val client = extension.instance.value()
+        val client = extension.instance.value().getOrNull()
             ?: throw EchoError.Extension("Could not initialize extension '${extension.name}'", extension.id)
         val trackClient = client as? TrackClient
             ?: throw EchoError.Playback("Extension '${extension.name}' cannot stream tracks")

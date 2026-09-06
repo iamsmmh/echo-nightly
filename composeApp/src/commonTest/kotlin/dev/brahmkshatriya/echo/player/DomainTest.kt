@@ -124,7 +124,7 @@ class SettingsRepositoryTest {
         val repo = SettingsRepository(store)
         var seen = repo.settings
         repo.addListener { seen = it }
-        repo.update { it.copy.transcodeFormat = "mp3") }
+        repo.update { it.copy(transcodeFormat = "mp3") }
         assertEquals("mp3", seen.transcodeFormat)
         repo.removeListener({})
     }
@@ -146,9 +146,11 @@ class PlaylistRepositoryTest {
         repo.addTracks(playlist.id, listOf(ref("a")))
         assertEquals(3, repo.get(playlist.id)!!.tracks.size)
 
-        // reorder
+        // reorder: moving index 0 to index 2 splices the item out and re-inserts
+        // it at 2, so [a, b, c] -> [b, c, a] (same convention as QueueManager.move
+        // and UnifiedDatabase.moveTrack).
         assertTrue(repo.moveTrack(playlist.id, 0, 2))
-        assertEquals("c", repo.get(playlist.id)!!.tracks[0].trackId)
+        assertEquals("b", repo.get(playlist.id)!!.tracks[0].trackId)
 
         // remove
         assertTrue(repo.removeTrack(playlist.id, "c"))

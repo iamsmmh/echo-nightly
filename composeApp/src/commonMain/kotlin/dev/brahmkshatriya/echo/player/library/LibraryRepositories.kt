@@ -91,7 +91,12 @@ class PlaylistRepository(private val store: KeyValueStore) {
         val index = list.indexOfFirst { it.id == id }
         if (index == -1) return false
         persist(list.mapIndexed { i, p ->
-            if (i == index) p.copy(tracks = p.tracks.filterNot { it.key == trackKey }, updatedAtMs = now()) else p
+            if (i == index) {
+                // Accept either the composite `extensionId::trackId` key or the
+                // bare track id, so callers do not need to know the extension.
+                val matches = p.tracks.filterNot { it.key == trackKey || it.trackId == trackKey }
+                p.copy(tracks = matches, updatedAtMs = now())
+            } else p
         })
         return true
     }

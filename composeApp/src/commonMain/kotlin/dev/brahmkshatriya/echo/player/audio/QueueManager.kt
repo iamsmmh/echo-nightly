@@ -1,6 +1,6 @@
 package dev.brahmkshatriya.echo.player.audio
-import dev.brahmkshatriya.echo.common.models.Track
 
+import dev.brahmkshatriya.echo.common.models.Track
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,31 +44,37 @@ class QueueManager(
 
     // ------------------------------------------------------------------ API
 
-    suspend fun setQueue(tracks: List<Track>, extensionId: String, startTrackId: String?, shuffle: Boolean): QueueItem? =
-        mutex.withLock {
-            original.clear()
+    suspend fun setQueue(
+        tracks: List<Track>,
+        extensionId: String,
+        startTrackId: String?,
+        shuffle: Boolean = false
+    ): QueueItem? = mutex.withLock {
+        original.clear()
+        shuffled.clear()
+        original.addAll(tracks.map { track -> QueueItem(ids.next(), track, extensionId) })
+        val current = original.firstOrNull { it.track.id == startTrackId } ?: original.firstOrNull()
+        if (shuffle) {
+            applyShuffleFrom(current)
+        } else {
             shuffled.clear()
-            original.addAll(tracks.map { track -> QueueItem(ids.next(), track, extensionId) })
-            var current = original.firstOrNull { it.track.id == startTrackId } ?: original.firstOrNull()
-            if (shuffle) {
-                applyShuffleFrom(current)
-            } else {
-                shuffleSeed = null
-            }
-            publish(shuffle)
-            return current
+            shuffleSeed = null
         }
+        // The snapshot must carry the resolved start item, otherwise `current`,
+        // `advance` and `rewind` all operate on a queue with no position.
+        publish(shuffle, currentId = current?.id)
+        return current
+    }
 
     suspend fun replaceItems(items: List<QueueItem>, currentId: String?): QueueItem? = mutex.withLock {
         original.clear()
         shuffled.clear()
         original.addAll(items)
-        if (state.value.shuffleEnabled) {
-            val current = original.firstOrNull { it.id == currentId }
-            applyShuffleFrom(current)
+        if (_state.value.shuffleEnabled) {
+            applyShuffleFrom(original.firstOrNull { it.id == currentId })
         }
-        _state.value = _state.value.copy(items = effectiveItems(), currentId = currentId)
-        return current
+        publish(currentId = currentId)
+        return _state.value.currentId?.let { id -> _state.value.items.firstOrNull { it.id == id } }
     }
 
     suspend fun getCurrent(): QueueItem? = mutex.withLock { current }
@@ -162,18 +168,26 @@ class QueueManager(
 
     /** Appends [items] to the end of the queue ("play later"). */
     suspend fun addLater(items: List<QueueItem>) = mutex.withLock {
-        original.addAll(items)
-        publish()
+        if (items.isNotEmpty()) {
+            original.addAll(items)
+            // Keep the shuffled order in sync, otherwise "play later" items are
+            // invisible until the queue is re-shuffled.
+            if (_state.value.shuffleEnabled) shuffled.addAll(items)
+            publish()
+        }
     }
 
     suspend fun remove(itemId: String): QueueItem? = mutex.withLock {
         val item = original.firstOrNull { it.id == itemId } ?: return null
+        val snapshot = _state.value
+        // Position of the removed item in the order the user is looking at, so
+        // playback can continue with whatever now sits in that slot.
+        val removedIndex = snapshot.items.indexOfFirst { it.id == itemId }
         original.remove(item)
         shuffled.remove(item)
-        val snapshot = _state.value
         if (snapshot.currentId == itemId) {
             val list = effectiveItems()
-            val next = list.firstOrNull { it.id != itemId }
+            val next = if (list.isEmpty()) null else list[removedIndex.coerceIn(0, list.lastIndex)]
             _state.value = snapshot.copy(items = list, currentId = next?.id)
             return next
         }
@@ -265,10 +279,17 @@ class QueueManager(
         }
     }
 
-    private fun publish(shuffleEnabledNow: Boolean = _state.value.shuffleEnabled) {
+    private fun publish(
+        shuffleEnabledNow: Boolean = _state.value.shuffleEnabled,
+        currentId: String? = _state.value.currentId
+    ) {
+        // Resolve the enabled flag *before* picking the effective list: reading
+        // `_state.value.shuffleEnabled` here would publish the pre-toggle order.
+        val enabled = shuffleEnabledNow && shuffled.isNotEmpty()
         _state.value = _state.value.copy(
-            items = effectiveItems(),
-            shuffleEnabled = shuffleEnabledNow && shuffled.isNotEmpty(),
+            items = if (enabled) shuffled.toList() else original.toList(),
+            currentId = currentId,
+            shuffleEnabled = enabled,
             shuffleSeed = shuffleSeed
         )
     }

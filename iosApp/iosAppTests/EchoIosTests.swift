@@ -22,20 +22,20 @@ final class EchoIosTests: XCTestCase {
     /// configured for music playback (AVAudioSessionCategoryPlayback).
     func testAudioSessionConfiguredForPlayback() {
         XCTAssertEqual(
-            EchoIosBridge.companion().audioSessionCategory(),
+            EchoIosBridge.shared.audioSessionCategory(),
             "AVAudioSessionCategoryPlayback"
         )
     }
 
     /// The local library and active extension are reachable through the bridge.
     func testBridgeLibraryAndExtension() {
-        XCTAssertGreaterThanOrEqual(EchoIosBridge.companion().libraryCount(), 0)
-        XCTAssertNotNil(EchoIosBridge.companion().activeExtensionId())
+        XCTAssertGreaterThanOrEqual(EchoIosBridge.shared.libraryCount(), 0)
+        XCTAssertNotNil(EchoIosBridge.shared.activeExtensionId())
     }
 
     /// Importing an empty list must be a safe no-op.
     func testImportFilesEmptyIsNoop() {
-        EchoIosBridge.companion().importFiles(paths: [])
-        XCTAssertEqual(EchoIosBridge.companion().libraryCount(), 0)
+        EchoIosBridge.shared.importFiles(paths: [])
+        XCTAssertEqual(EchoIosBridge.shared.libraryCount(), 0)
     }
 }

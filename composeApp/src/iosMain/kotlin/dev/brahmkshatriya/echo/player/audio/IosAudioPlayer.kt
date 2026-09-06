@@ -237,15 +237,15 @@ class IosAudioPlayer(
         pushNowPlaying()
     }
 
-    override fun setVolume(newVolume: Float) {
-        volume = newVolume.coerceIn(0f, 1f)
-        player?.volume = volume
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        player?.volume = this.volume
     }
 
-    override fun setPlaybackSpeed(newSpeed: Float) {
-        speed = newSpeed.coerceIn(0.25f, 3f)
-        if (engineState.value.isPlaying) player?.rate = speed
-        updateState { it.copy(speed = speed) }
+    override fun setPlaybackSpeed(speed: Float) {
+        this.speed = speed.coerceIn(0.25f, 3f)
+        if (engineState.value.isPlaying) player?.rate = this.speed
+        updateState { it.copy(speed = this.speed) }
     }
 
     override fun setNowPlayingInfo(info: NowPlayingInfo) {
