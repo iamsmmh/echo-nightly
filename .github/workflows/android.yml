@@ -57,7 +57,10 @@ jobs:
             echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
             echo
             echo '```'
-            grep -hE "^e: |error: |Execution failed for task|Could not|Unresolved reference|problem found" /tmp/ci.log 2>/dev/null | sort -u | head -120 || true
+            grep -hE "^e: |error: |Execution failed for task|Unresolved reference" /tmp/ci.log 2>/dev/null | sort -u | head -80 || true
+            echo
+            echo "---- last 120 lines ----"
+            tail -n 120 /tmp/ci.log 2>/dev/null || true
             echo '```'
             echo
             echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
