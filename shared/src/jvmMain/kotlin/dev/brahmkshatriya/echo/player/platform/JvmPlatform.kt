@@ -49,6 +49,18 @@ class JvmKeyValueStore(name: String) : KeyValueStore {
     }
 
     @Synchronized
+    override fun putStringDurably(key: String, value: String?) {
+        if (value == null) props.remove(key) else props.setProperty(key, value)
+        val temporary = File(file.parentFile, file.name + ".tmp")
+        java.io.FileOutputStream(temporary).use { output ->
+            props.store(output, "echo shared store")
+            output.fd.sync()
+        }
+        java.nio.file.Files.move(temporary.toPath(), file.toPath(),
+            java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    @Synchronized
     override fun getLong(key: String): Long = props.getProperty(key)?.toLongOrNull() ?: 0L
 
     @Synchronized

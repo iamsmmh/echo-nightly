@@ -39,10 +39,13 @@ class DownloadWorker(
         job.cancel()
         // Phase 1 (stability): an interrupted session retries with WorkManager
         // backoff (network constraint applies), instead of silently stopping.
-        return result.fold { Result.success() } {
-            if (it is kotlinx.coroutines.CancellationException) throw it
-            else Result.retry()
-        }
+        return result.fold(
+            onSuccess = { Result.success() },
+            onFailure = {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                Result.retry()
+            }
+        )
     }
 
     @OptIn(UnstableApi::class)

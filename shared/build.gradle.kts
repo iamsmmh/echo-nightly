@@ -28,6 +28,9 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
+        androidMain.dependencies {
+            implementation(libs.androidx.security.crypto)
+        }
         jvmMain.dependencies {
             // JVM/desktop actuals use java.net + java.nio only - no extra deps.
         }

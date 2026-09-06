@@ -164,7 +164,7 @@ class PlayerService : MediaLibraryService() {
                 PlaybackRecoveryStore.clear(this@PlayerService)
                 return@launch
             }
-            if (session.controllerCount > 0 || exoPlayer.mediaItemCount > 0) return@launch
+            if (session.connectedControllers.isNotEmpty() || exoPlayer.mediaItemCount > 0) return@launch
             val (items, index, position) = runCatching {
                 recoverPlaylist(app, downloader.flow.value, withClear = false)
             }.getOrElse {

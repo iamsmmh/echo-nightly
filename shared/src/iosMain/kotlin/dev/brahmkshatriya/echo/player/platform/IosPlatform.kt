@@ -225,6 +225,12 @@ class IosKeyValueStore(name: String) : KeyValueStore {
         else defaults.setObject(value, forKey = key)
     }
 
+    override fun putStringDurably(key: String, value: String?) {
+        putString(key, value)
+        // Only credential-reference commits require an explicit persistence barrier.
+        check(defaults.synchronize()) { "Could not persist settings" }
+    }
+
     override fun getLong(key: String): Long = defaults.integerForKey(key).toLong()
 
     override fun putLong(key: String, value: Long) = defaults.setInteger(value, forKey = key)

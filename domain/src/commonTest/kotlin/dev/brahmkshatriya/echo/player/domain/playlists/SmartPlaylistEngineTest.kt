@@ -61,4 +61,9 @@ class SmartPlaylistEngineTest {
         assertEquals("new", engine.evaluate(p, songs + songs).single().ref.trackId)
         assertEquals("old", engine.evaluate(p.copy(descending = true), songs).single().ref.trackId)
     }
+    @Test fun importedFavoritesAreOfflineButNotDownloads() {
+        val local = LibrarySong(TrackRef("local-offline", "import", "Imported", "Artist"), favorite = true, offlineAvailable = true)
+        assertEquals(listOf(local), engine.evaluate(BuiltinSmartPlaylists.all.first { it.id == "offline-favorites" }, listOf(local)))
+        assertTrue(engine.evaluate(BuiltinSmartPlaylists.all.first { it.id == "downloaded" }, listOf(local)).isEmpty())
+    }
 }

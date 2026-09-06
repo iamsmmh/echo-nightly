@@ -6,6 +6,10 @@ import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
+import dev.brahmkshatriya.echo.common.clients.LyricsClient
+import dev.brahmkshatriya.echo.common.models.Lyrics
+import dev.brahmkshatriya.echo.player.core.lyrics.LrcParser
+import dev.brahmkshatriya.echo.player.domain.runCatchingCancellable
 import dev.brahmkshatriya.echo.common.helpers.ClientException
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.Feed
@@ -31,7 +35,7 @@ import kotlinx.coroutines.flow.first
 class SubsonicExtensionClient(
     private val api: SubsonicApi,
     private val settingsRepository: SettingsRepository
-) : ExtensionClient, HomeFeedClient, SearchFeedClient, AlbumClient, ArtistClient, TrackClient {
+) : ExtensionClient, HomeFeedClient, SearchFeedClient, AlbumClient, ArtistClient, TrackClient, LyricsClient {
 
     override suspend fun getSettingItems(): List<Setting> = emptyList()
 
@@ -44,6 +48,26 @@ class SubsonicExtensionClient(
             throw ClientException.NotSupported("Subsonic server is not configured")
         }
     }
+
+    override suspend fun searchTrackLyrics(clientId: String, track: Track): Feed<Lyrics> {
+        val structured = runCatchingCancellable { api.structuredLyrics(track.id) }.getOrNull()
+        val lyric = if (structured != null) {
+            val lines = structured.line
+            if (structured.synced && lines.all { it.start != null && it.start >= 0 && it.start <= 86_400_000 }) {
+                val offset = structured.offset.coerceIn(-86_400_000, 86_400_000)
+                val ordered = lines.sortedBy { it.start }
+                Lyrics.Timed(ordered.mapIndexed { index, line ->
+                    val start = (line.start!! + offset).coerceAtLeast(0)
+                    val end = ordered.getOrNull(index + 1)?.start?.let { (it + offset).coerceAtLeast(start) }
+                        ?: track.duration?.takeIf { it > start } ?: Long.MAX_VALUE
+                    Lyrics.Item(line.value, start, end)
+                })
+            } else Lyrics.Simple(lines.joinToString("\n") { it.value })
+        } else api.lyrics(track.artists.firstOrNull()?.name.orEmpty(), track.title)?.let { LrcParser.parse(it, track.duration) }
+        return listOfNotNull(lyric?.let { Lyrics(track.id, track.title, lyrics = it) }).toFeed()
+    }
+
+    override suspend fun loadLyrics(lyrics: Lyrics): Lyrics = lyrics
 
     // ------------------------------------------------------------ mappers
 

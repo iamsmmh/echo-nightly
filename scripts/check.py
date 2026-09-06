@@ -128,50 +128,10 @@ for d in glob.glob("*/build.gradle.kts"):
         err(f"{mod}/build.gradle.kts exists but :{mod} not in settings.gradle.kts")
 
 # ----------------------------------------------------------------------------
-# 3. Cross-module import consistency for the KMP layer.
+# 3–4. One source of truth for the module graph and platform/UI boundaries.
 # ----------------------------------------------------------------------------
-PACKAGE_TO_MODULE = {}
-for mod in ["shared", "core", "domain", "data", "player", "extensions", "composeApp", "common"]:
-    for path in glob.glob(f"{mod}/src/*/kotlin/**/*.kt", recursive=True):
-        text = open(path, encoding="utf-8").read()
-        m = re.search(r'^\s*package\s+(dev\.brahmkshatriya\.echo[\w.]*)', text, re.M)
-        if m:
-            PACKAGE_TO_MODULE.setdefault(m.group(1), set()).add(mod)
-
-DEPS = {
-    "shared": {"common"},
-    "core": {"shared", "common"},
-    "domain": {"shared", "core", "common"},
-    "data": {"domain", "shared", "core", "common"},
-    "extensions": {"data", "domain", "shared", "common"},
-    "player": {"extensions", "data", "domain", "core", "shared", "common"},
-    "composeApp": {"player", "extensions", "data", "domain", "core", "shared", "common"},
-    "common": set(),
-}
-
-for mod in DEPS:
-    for path in glob.glob(f"{mod}/src/*/kotlin/**/*.kt", recursive=True):
-        text = open(path, encoding="utf-8").read()
-        for imp in re.findall(r'^\s*import\s+(dev\.brahmkshatriya\.echo\.[\w.]*\.)[\w<>*]+', text, re.M):
-            imp_pkg = imp.rstrip(".")
-            owner = PACKAGE_TO_MODULE.get(imp_pkg)
-            if not owner:
-                continue
-            if mod in owner:
-                continue
-            if not (owner & (DEPS.get(mod, set()) | {mod})):
-                err(f"{path}: imports package '{imp_pkg}' provided by {sorted(owner)} "
-                    f"but :{mod} only depends on {sorted(DEPS.get(mod, set()))}")
-
-# ----------------------------------------------------------------------------
-# 4. commonMain must not use android/java/okhttp APIs
-# ----------------------------------------------------------------------------
-for mod in ["shared", "core", "domain", "data", "player", "extensions", "common"]:
-    for path in glob.glob(f"{mod}/src/commonMain/kotlin/**/*.kt", recursive=True):
-        text = open(path, encoding="utf-8").read()
-        for line in text.splitlines():
-            if re.match(r'\s*import\s+(android\.|androidx\.|java\.|javax\.|okhttp3\.)', line):
-                err(f"{path}: platform import in commonMain: {line.strip()}")
+from architecture import inspect
+ERRORS.extend(inspect(ROOT))
 
 # ----------------------------------------------------------------------------
 # 5. expect/actual pairs consistent per module
@@ -184,14 +144,10 @@ for mod in ["shared", "core", "domain", "data", "player", "extensions", "compose
             expects[m.group(1)] = path
     actuals = {}
     for ss in ["androidMain", "iosMain", "jvmMain"]:
-        found_any = False
         for path in glob.glob(f"{mod}/src/{ss}/kotlin/**/*.kt", recursive=True):
-            found_any = True
             text = open(path, encoding="utf-8").read()
             for m in re.finditer(r'actual\s+(?:fun|class|val|object|typealias)\s+(\w+)', text):
                 actuals.setdefault(m.group(1), set()).add(ss)
-        if not found_any and ss in ("androidMain", "iosMain") and expects:
-            pass
     if expects:
         has_jvm = os.path.isdir(f"{mod}/src/jvmMain")
         has_android = os.path.isdir(f"{mod}/src/androidMain")
@@ -222,8 +178,7 @@ except ImportError:
 # ----------------------------------------------------------------------------
 # 7. pbxproj sanity
 # ----------------------------------------------------------------------------
-for pbx in glob.glob("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj") + \
-            glob.glob("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj"):
+for pbx in glob.glob("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj"):
     text = open(pbx).read()
     if text.count("{") != text.count("}"):
         err(f"{pbx}: unbalanced braces")
@@ -233,13 +188,6 @@ for pbx in glob.glob("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj") + \
 # ----------------------------------------------------------------------------
 # 8. Workflows referencing module paths must match the repo layout
 # ----------------------------------------------------------------------------
-path_refs = {"app/build/outputs": "app-android" not in "",
-             }
-for path in glob.glob(".github/workflows/*.yml"):
-    text = open(path).read()
-    for ref in re.findall(r'(?:^|[\s"\'])([\w/-]*app/build/outputs/[\w./-]*)', text, re.M):
-        pass
-
 if os.path.isdir("app-android") and os.path.isdir("app"):
     err("both app/ and app-android/ exist; module move incomplete")
 if os.path.isdir("app") and re.search(r'include\(":app-android"\)', settings):

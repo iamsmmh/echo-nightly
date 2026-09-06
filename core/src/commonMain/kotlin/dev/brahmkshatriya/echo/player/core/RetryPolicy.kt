@@ -1,6 +1,7 @@
 package dev.brahmkshatriya.echo.player.core
 
 import kotlin.math.min
+import dev.brahmkshatriya.echo.player.domain.runCatchingCancellable
 import kotlin.random.Random
 
 /**
@@ -93,15 +94,4 @@ suspend fun <T> withRetry(
         sleeper(delay)
         attempt++
     }
-}
-
-/** runCatching that always rethrows coroutine cancellation. */
-internal suspend inline fun <T> runCatchingCancellable(
-    crossinline block: suspend () -> T
-): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: kotlinx.coroutines.CancellationException) {
-    throw cancellation
-} catch (throwable: Throwable) {
-    Result.failure(throwable)
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Android Keystore keys are device-bound and cannot decrypt restored ciphertext. -->
+    <exclude domain="sharedpref" path="secure_echo_player.xml" />
+</full-backup-content>

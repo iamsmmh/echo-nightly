@@ -13,7 +13,7 @@ enum class TextField { TITLE, ARTIST, ALBUM, GENRE }
 @Serializable
 enum class TextOperator { EQUAL, CONTAINS }
 @Serializable
-enum class FlagField { FAVORITE, DOWNLOADED }
+enum class FlagField { FAVORITE, DOWNLOADED, OFFLINE_AVAILABLE }
 
 /** Versioned, data-only expressions. No scripts, reflection or provider code execution. */
 @Serializable
@@ -81,7 +81,7 @@ class SmartPlaylistEngine(private val now: () -> Long) {
         is PlaylistRule.All -> rule.rules.all { matches(it, song, timestamp) }
         is PlaylistRule.Any -> rule.rules.any { matches(it, song, timestamp) }
         is PlaylistRule.Not -> !matches(rule.rule, song, timestamp)
-        is PlaylistRule.Flag -> (when (rule.field) { FlagField.FAVORITE -> song.favorite; FlagField.DOWNLOADED -> song.downloaded }) == rule.value
+        is PlaylistRule.Flag -> (when (rule.field) { FlagField.FAVORITE -> song.favorite; FlagField.DOWNLOADED -> song.downloaded; FlagField.OFFLINE_AVAILABLE -> song.offlineAvailable }) == rule.value
         is PlaylistRule.Number -> {
             val value = when (rule.field) {
                 NumberField.PLAY_COUNT -> song.stats.playCount
@@ -118,7 +118,7 @@ object BuiltinSmartPlaylists {
         SmartPlaylist("most-played", "Most Played", PlaylistRule.Number(NumberField.PLAY_COUNT, NumberOperator.GREATER_THAN, 0), PlaylistSort.PLAY_COUNT, true),
         SmartPlaylist("never-played", "Never Played", PlaylistRule.Number(NumberField.PLAY_COUNT, NumberOperator.EQUAL, 0)),
         SmartPlaylist("downloaded", "Downloaded", PlaylistRule.Flag(FlagField.DOWNLOADED)),
-        SmartPlaylist("offline-favorites", "Offline Favorites", PlaylistRule.All(listOf(PlaylistRule.Flag(FlagField.FAVORITE), PlaylistRule.Flag(FlagField.DOWNLOADED)))),
+        SmartPlaylist("offline-favorites", "Offline Favorites", PlaylistRule.All(listOf(PlaylistRule.Flag(FlagField.FAVORITE), PlaylistRule.Flag(FlagField.OFFLINE_AVAILABLE)))),
         SmartPlaylist("top-artists", "Top Artists", PlaylistRule.Number(NumberField.PLAY_COUNT, NumberOperator.GREATER_THAN, 0), PlaylistSort.ARTIST_POPULARITY, true)
     )
 }

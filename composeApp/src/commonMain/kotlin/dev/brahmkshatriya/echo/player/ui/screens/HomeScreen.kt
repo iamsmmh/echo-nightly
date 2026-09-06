@@ -56,7 +56,9 @@ fun HomeScreen(graph: AppGraph) {
         val matches = graph.recommendations.recommend(kind, catalog, mood = mood)
         if (matches.isEmpty()) null else kind to matches
     } }
-    val activeId = graph.extensions.activeExtensionId
+    val preferences by graph.settings.state.collectAsState()
+    val registered by graph.extensions.extensions.collectAsState()
+    val activeId = remember(preferences.activeExtensionId, registered) { graph.extensions.activeExtensionId }
     LaunchedEffect(activeId) {
         shelves = null
         error = null
@@ -68,14 +70,14 @@ fun HomeScreen(graph: AppGraph) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(title = { Text(activeExtensionName(graph)) })
         when {
-            shelves == null && error == null -> Column(
+            shelves == null && error == null && recommended.isEmpty() -> Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator()
             }
-            error != null -> HomeMessage(graph, "Could not load the feed.\n$error")
+            error != null && recommended.isEmpty() -> HomeMessage(graph, "Could not load the feed.\n$error")
             shelves?.isEmpty() == true && recommended.isEmpty() -> HomeMessage(
                 graph,
                 if (activeId == dev.brahmkshatriya.echo.player.extensions.local.LocalExtensionClient.ID)
@@ -86,6 +88,9 @@ fun HomeScreen(graph: AppGraph) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                if (error != null) item(key = "feed-error") {
+                    Text("Remote feed unavailable. Your local recommendations are still available.", modifier = Modifier.padding(16.dp))
+                }
                 if (recommended.isNotEmpty()) {
                     item(key = "recommendation-mood") {
                         TextButton(onClick = { mood = RecommendationEngine.Mood.entries[(mood.ordinal + 1) % RecommendationEngine.Mood.entries.size] }) {

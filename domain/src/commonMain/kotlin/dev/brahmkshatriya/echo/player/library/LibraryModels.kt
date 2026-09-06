@@ -53,5 +53,6 @@ data class LibrarySong(
     val stats: ListeningStats = ListeningStats(),
     val genres: Set<String> = emptySet(),
     val albumArtist: String = ref.artist,
-    val albumOrder: Long? = null
+    val albumOrder: Long? = null,
+    val offlineAvailable: Boolean = downloaded
 )

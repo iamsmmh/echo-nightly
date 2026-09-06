@@ -35,6 +35,8 @@ class SubsonicApi(
         this.config = config
     }
 
+    fun clearConfiguration() { config = null }
+
     private var config: ServerConfig? = null
 
     val isConfigured: Boolean get() = config?.let { it.baseUrl.isNotBlank() && it.username.isNotBlank() } == true
@@ -45,14 +47,12 @@ class SubsonicApi(
         val cfg = config ?: throw EchoError.Extension("Subsonic server is not configured")
         val salt = generateSalt()
         val token = dev.brahmkshatriya.echo.player.extensions.Md5.digestHex(cfg.password + salt)
-        return "u=${encode(cfg.username)}&t=$token&s=$salt&v=$API_VERSION&c=$CLIENT"
+        return "u=${encode(cfg.username)}&t=$token&s=$salt&v=$API_VERSION&c=$CLIENT&f=json"
     }
 
     private fun generateSalt(): String {
-        val random = kotlin.random.Random.Default
-        return buildString {
-            repeat(12) { append(SALT_CHARS[random.nextInt(SALT_CHARS.length)]) }
-        }
+        return dev.brahmkshatriya.echo.player.security.secureRandomBytes(12)
+            .map { SALT_CHARS[(it.toInt() and 255) % SALT_CHARS.length] }.joinToString("")
     }
 
     private fun endpoint(path: String, params: Map<String, String> = emptyMap()): String {
@@ -127,6 +127,16 @@ class SubsonicApi(
             }
         )
 
+    suspend fun structuredLyrics(songId: String): StructuredLyricsDto? {
+        val url = endpoint("getLyricsBySongId", mapOf("id" to songId))
+        return envelope(requestText(url)) { it.lyricsList }?.structuredLyrics?.firstOrNull { it.line.isNotEmpty() }
+    }
+
+    suspend fun lyrics(artist: String, title: String): String? {
+        val url = endpoint("getLyrics", mapOf("artist" to artist, "title" to title))
+        return envelope(requestText(url)) { it.lyrics }?.value?.takeIf { it.isNotBlank() }
+    }
+
     /** Cover art URL. */
     fun coverArtUrl(coverArtId: String?, size: Int = 600): String? =
         coverArtId?.takeIf { it.isNotBlank() }?.let { endpoint("getCoverArt", mapOf("id" to it, "size" to size.toString())) }
@@ -165,23 +175,14 @@ class SubsonicApi(
         private const val SALT_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
         fun encode(value: String): String = buildString {
-            for (ch in value) {
-                when {
-                    ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' ||
-                        ch == '-' || ch == '_' || ch == '.' || ch == '~' -> append(ch)
-                    ch == ' ' -> append("%20")
-                    else -> {
-                        for (b in ch.toString().encodeToByteArray()) {
-                            append('%')
-                            append(HEX[(b.toInt() shr 4) and 0xf])
-                            append(HEX[b.toInt() and 0xf])
-                        }
-                    }
-                }
+            for (byte in value.encodeToByteArray()) {
+                val value = byte.toInt() and 0xff
+                val ch = value.toChar()
+                if (ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch in "-_.~") append(ch)
+                else { append('%'); append("0123456789ABCDEF"[value ushr 4]); append("0123456789ABCDEF"[value and 15]) }
             }
         }
 
-        private val HEX = "0123456789ABCDEF".toCharArray()
     }
 }
 
@@ -202,8 +203,20 @@ data class SubsonicResponseDto(
     val albumList2: AlbumList2Dto? = null,
     val album: AlbumWithSongsDto? = null,
     val artist: ArtistWithAlbumsDto? = null,
-    val artists: ArtistsDto? = null
+    val artists: ArtistsDto? = null,
+    val lyrics: LyricsDto? = null,
+    val lyricsList: LyricsListDto? = null
 )
+
+@Serializable
+data class LyricsDto(val value: String? = null)
+
+@Serializable
+data class LyricsListDto(val structuredLyrics: List<StructuredLyricsDto> = emptyList())
+@Serializable
+data class StructuredLyricsDto(val synced: Boolean = false, val offset: Long = 0, val line: List<LyricLineDto> = emptyList())
+@Serializable
+data class LyricLineDto(val value: String, val start: Long? = null)
 
 @Serializable
 data class SubsonicErrorDto(val code: Int? = null, val message: String? = null)

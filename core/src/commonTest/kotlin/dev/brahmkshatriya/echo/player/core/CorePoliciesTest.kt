@@ -74,11 +74,11 @@ class RetryPolicyTest {
                 sleeper = {}
             ) {
                 calls++
-                throw SecurityException("no permission")
+                throw IllegalArgumentException("no permission")
             }
         }
         assertEquals(1, calls)
-        assertTrue(result.exceptionOrNull() is SecurityException)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
     }
 
     @Test

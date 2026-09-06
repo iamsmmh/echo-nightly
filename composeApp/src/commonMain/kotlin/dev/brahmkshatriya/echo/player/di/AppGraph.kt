@@ -46,7 +46,7 @@ class AppGraph(
     }
 
     val store: KeyValueStore by lazy { dev.brahmkshatriya.echo.player.platform.createKeyValueStore(storeName) }
-    val settings: SettingsRepository by lazy { SettingsRepository(store) }
+    val settings: SettingsRepository by lazy { SettingsRepository(store, createSecureStorage(storeName)) }
     val http: HttpClient by lazy { dev.brahmkshatriya.echo.player.platform.createHttpClient(logger) }
     val storage: MusicStorage by lazy { dev.brahmkshatriya.echo.player.platform.createMusicStorage() }
     val metadataReader: MetadataReader by lazy { dev.brahmkshatriya.echo.player.platform.createMetadataReader() }
@@ -134,7 +134,7 @@ class AppGraph(
                     password = s.subsonicPassword
                 )
             )
-        }
+        } else subsonicApi.clearConfiguration()
     }
 
     val extensions: ExtensionRuntime by lazy {
@@ -210,6 +210,14 @@ class AppGraph(
         )
     }
 
+    val lyrics by lazy { dev.brahmkshatriya.echo.player.lyrics.LyricsRepository(
+        store, dev.brahmkshatriya.echo.player.library.ExtensionLyricsProvider(extensions)
+    ) }
+
+    fun lyricsRequest(item: dev.brahmkshatriya.echo.player.audio.QueueItem) =
+        dev.brahmkshatriya.echo.player.lyrics.LyricsRequest(item.extensionId, item.track,
+            if (item.extensionId == "subsonic") settings.settings.run { subsonicServerUrl.trimEnd('/') + "\u0000" + subsonicUsername } else "")
+
     val search: SearchRepository by lazy { SearchRepository(extensions, library, logger) }
 
     val artworkLoader: dev.brahmkshatriya.echo.player.ui.ArtworkLoader by lazy {
@@ -257,7 +265,7 @@ class AppGraph(
             val entry = local[ref.key]
             dev.brahmkshatriya.echo.player.library.LibrarySong(
                 ref, addedAtMs = entry?.addedAtMs ?: downloaded[ref.key]?.entry?.createdAtMs ?: 0,
-                downloaded = ref.key in downloaded || entry != null, favorite = ref.key in favoriteKeys,
+                downloaded = ref.key in downloaded, offlineAvailable = ref.key in downloaded || entry != null, favorite = ref.key in favoriteKeys,
                 stats = history.stats.value[ref.key] ?: dev.brahmkshatriya.echo.player.library.ListeningStats(),
                 genres = setOfNotNull(entry?.genre), albumArtist = entry?.albumArtist ?: ref.artist,
                 albumOrder = entry?.trackNumber?.toLong()

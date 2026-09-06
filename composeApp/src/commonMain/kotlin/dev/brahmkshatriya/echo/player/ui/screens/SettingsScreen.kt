@@ -39,10 +39,7 @@ import dev.brahmkshatriya.echo.player.platform.audioCapabilities
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(graph: AppGraph) {
-    var settings by remember { mutableStateOf(graph.settings.settings) }
-    LaunchedEffect(Unit) {
-        graph.settings.addListener { settings = it }
-    }
+    val settings by graph.settings.state.collectAsState()
     val capabilities = remember { audioCapabilities() }
 
     Column(
@@ -68,6 +65,11 @@ fun SettingsScreen(graph: AppGraph) {
             },
             enabled = settings.useDarkTheme != null
         )
+
+        ToggleRow("AMOLED mode", "True black backgrounds in dark mode", settings.amoledMode,
+            { value -> graph.settings.update { it.copy(amoledMode = value) } })
+        ToggleRow("Dynamic colors", "Use system colors where available", settings.dynamicTheme,
+            { value -> graph.settings.update { it.copy(dynamicTheme = value) } })
 
         SettingsSection("Playback")
         ToggleRow(

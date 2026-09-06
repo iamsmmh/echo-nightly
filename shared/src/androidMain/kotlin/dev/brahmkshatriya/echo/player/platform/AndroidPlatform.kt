@@ -58,6 +58,12 @@ class AndroidKeyValueStore(name: String) : KeyValueStore {
         editor.apply()
     }
 
+    override fun putStringDurably(key: String, value: String?) {
+        val editor = prefs.edit()
+        if (value == null) editor.remove(key) else editor.putString(key, value)
+        check(editor.commit()) { "Could not persist settings" }
+    }
+
     override fun getLong(key: String): Long = prefs.getLong(key, 0)
     override fun putLong(key: String, value: Long) = prefs.edit().putLong(key, value).apply()
     override fun getBoolean(key: String): Boolean = prefs.getBoolean(key, false)
