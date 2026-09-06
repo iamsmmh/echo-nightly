@@ -117,15 +117,15 @@ class AndroidAudioPlayer(
         updateState { it.copy(positionMs = positionMs) }
     }
 
-    override fun setVolume(newVolume: Float) {
-        volume = newVolume.coerceIn(0f, 1f)
-        exoPlayer?.volume = volume
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        exoPlayer?.volume = this.volume
     }
 
-    override fun setPlaybackSpeed(newSpeed: Float) {
-        speed = newSpeed.coerceIn(0.25f, 3f)
-        exoPlayer?.setPlaybackSpeed(speed)
-        updateState { it.copy(speed = speed) }
+    override fun setPlaybackSpeed(speed: Float) {
+        this.speed = speed.coerceIn(0.25f, 3f)
+        exoPlayer?.setPlaybackSpeed(this.speed)
+        updateState { it.copy(speed = this.speed) }
     }
 
     override fun setNowPlayingInfo(info: NowPlayingInfo) {

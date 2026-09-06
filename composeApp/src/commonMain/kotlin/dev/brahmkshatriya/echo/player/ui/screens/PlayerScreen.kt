@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -334,7 +334,7 @@ private fun TransportControls(
                 Icon(Icons.Filled.Speed, contentDescription = null)
             }
             IconButton(onClick = onOpenQueue, modifier = Modifier.semantics { contentDescription = "Queue" }) {
-                Icon(Icons.Filled.QueueMusic, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
             }
         }
     }
@@ -348,7 +348,7 @@ private fun QueueDownloadActions(graph: AppGraph, track: Track, onOpenQueue: () 
     val status = downloads[key]?.status
     Row {
         IconButton(onClick = onOpenQueue, modifier = Modifier.semantics { contentDescription = "Queue" }) {
-            Icon(Icons.Filled.QueueMusic, contentDescription = null)
+            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
         }
         IconButton(
             onClick = {

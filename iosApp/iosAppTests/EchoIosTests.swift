@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import iosApp
 import ComposeApp
 
@@ -13,29 +14,40 @@ final class EchoIosTests: XCTestCase {
     func testComposeRootLoads() {
         let controller = MainViewKt.MainViewController()
         XCTAssertNotNil(controller)
-        controller.loadViewIfNeeded()
+
+        // Compose draws through Skia into the root view's layer rather than
+        // adding UIKit subviews, and it only builds that hierarchy once the
+        // view is attached to a window and laid out -- `loadViewIfNeeded()`
+        // on a detached controller leaves it empty.
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+
+        XCTAssertTrue(controller.isViewLoaded)
         XCTAssertNotNil(controller.view)
-        XCTAssertFalse(controller.view.subviews.isEmpty)
+        XCTAssertFalse(controller.view.bounds.isEmpty)
+        XCTAssertEqual(controller.view.window, window)
     }
 
     /// The shared playback graph initializes and the audio session is
     /// configured for music playback (AVAudioSessionCategoryPlayback).
     func testAudioSessionConfiguredForPlayback() {
         XCTAssertEqual(
-            EchoIosBridge.companion().audioSessionCategory(),
+            EchoIosBridge.shared.audioSessionCategory(),
             "AVAudioSessionCategoryPlayback"
         )
     }
 
     /// The local library and active extension are reachable through the bridge.
     func testBridgeLibraryAndExtension() {
-        XCTAssertGreaterThanOrEqual(EchoIosBridge.companion().libraryCount(), 0)
-        XCTAssertNotNil(EchoIosBridge.companion().activeExtensionId())
+        XCTAssertGreaterThanOrEqual(EchoIosBridge.shared.libraryCount(), 0)
+        XCTAssertNotNil(EchoIosBridge.shared.activeExtensionId())
     }
 
     /// Importing an empty list must be a safe no-op.
     func testImportFilesEmptyIsNoop() {
-        EchoIosBridge.companion().importFiles(paths: [])
-        XCTAssertEqual(EchoIosBridge.companion().libraryCount(), 0)
+        EchoIosBridge.shared.importFiles(paths: [])
+        XCTAssertEqual(EchoIosBridge.shared.libraryCount(), 0)
     }
 }

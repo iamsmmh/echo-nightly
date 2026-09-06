@@ -79,30 +79,45 @@ fun MainViewController(): UIViewController {
  */
 object EchoIosBridge {
 
+    /**
+     * The shared graph, creating it on first use.
+     *
+     * The bridge is reachable from widgets, shortcuts and the XCTest host
+     * before `MainViewController()` ever ran, so every entry point must not
+     * assume [IosApplication.create] has already been called.
+     */
+    private val graph: AppGraph
+        get() = IosApplication.create().graph
+
     /** Imports audio files picked with UIDocumentPickerViewController. */
     fun importFiles(paths: List<String>) {
         if (paths.isEmpty()) return
-        val graph = IosApplication.graph
+        val library = graph.library
+        val logger = graph.logger
         IosApplication.scope.launch {
-            FileImports.importPickedFiles(graph.library, graph.logger, paths)
+            FileImports.importPickedFiles(library, logger, paths)
         }
     }
 
-    fun playPause() = IosApplication.graph.player.playPause()
+    fun playPause() = graph.player.playPause()
 
-    fun next() = IosApplication.graph.player.next()
+    fun next() = graph.player.next()
 
-    fun previous() = IosApplication.graph.player.previous()
+    fun previous() = graph.player.previous()
 
-    fun seekTo(positionMs: Long) = IosApplication.graph.player.seekTo(positionMs)
+    fun seekTo(positionMs: Long) = graph.player.seekTo(positionMs)
 
-    fun libraryCount(): Long = IosApplication.graph.library.tracks.value.size.toLong()
+    fun libraryCount(): Long = graph.library.tracks.value.size.toLong()
 
-    fun activeExtensionId(): String? = IosApplication.graph.extensions.activeExtensionId
+    fun activeExtensionId(): String? = graph.extensions.activeExtensionId
 
     /** The current AVAudioSession category (used by the iOS tests). */
-    fun audioSessionCategory(): String =
-        AVAudioSession.sharedInstance().category.toString()
+    fun audioSessionCategory(): String {
+        // Reading the graph makes sure the shared audio engine exists, which is
+        // what configures the session for playback in the first place.
+        IosApplication.create()
+        return AVAudioSession.sharedInstance().category.toString()
+    }
 }
 
 /* iOS UI actuals (document picker, artwork decoder) live in player/ui/IosUiActuals.kt */
