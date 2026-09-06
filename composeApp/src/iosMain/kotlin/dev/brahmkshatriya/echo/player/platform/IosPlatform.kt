@@ -36,11 +36,11 @@ class IosHttpClient(
                     ?: throw EchoError.Network("Invalid URL: ${sanitizeUrl(request.url)}")
                 val session = NSURLSession.sessionWithConfiguration(configurationFor(request))
                 val urlRequest = NSMutableURLRequest(uRL = url)
-                urlRequest.httpMethod = request.method
+                urlRequest.HTTPMethod = request.method
                 request.headers.forEach { (key, value) ->
                     urlRequest.setValue(value, forHTTPHeaderField = key)
                 }
-                request.body?.let { urlRequest.httpBody = it.toNSData() }
+                request.body?.let { urlRequest.HTTPBody = it.toNSData() }
 
                 val task = session.dataTaskWithRequest(urlRequest) { data, response, error ->
                     if (error != null) {
@@ -89,7 +89,7 @@ class IosHttpClient(
                 configuration, delegate = delegate, delegateQueue = null
             )
             val urlRequest = NSMutableURLRequest(uRL = url)
-            urlRequest.httpMethod = request.method
+            urlRequest.HTTPMethod = request.method
             request.headers.forEach { (key, value) ->
                 urlRequest.setValue(value, forHTTPHeaderField = key)
             }

@@ -25,12 +25,16 @@ import kotlinx.coroutines.launch
 import org.jetbrains.skia.Image
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.AVAudioSessionInterruptionNotification
+import platform.AVFAudio.AVAudioSessionRouteChangeNotification
+import platform.AVFAudio.setActive
 import platform.AVFoundation.*
 import platform.CoreGraphics.*
 import platform.CoreMedia.*
 import platform.Foundation.*
 import platform.MediaPlayer.*
 import platform.UIKit.*
+import platform.darwin.NSObjectProtocol
 
 private const val TAG = "IosAudioPlayer"
 
@@ -91,23 +95,23 @@ class IosAudioPlayer(
 
     private fun configureAudioSession() {
         val session = AVAudioSession.sharedInstance()
-        val categoryError = session.setCategory(AVAudioSessionCategoryPlayback)
-        if (categoryError != null) {
-            logger.error(TAG, "AVAudioSession category error: ${categoryError.localizedDescription}")
+        val categorySuccess = session.setCategory(AVAudioSessionCategoryPlayback, null)
+        if (!categorySuccess) {
+            logger.error(TAG, "AVAudioSession category error: failed to set playback category")
         }
     }
 
     private fun activateAudioSession() {
         val session = AVAudioSession.sharedInstance()
-        val error = session.setActive(true)
-        if (error != null) {
-            logger.warn(TAG, "AVAudioSession activation error: ${error.localizedDescription}")
+        val success = session.setActive(true, null)
+        if (!success) {
+            logger.warn(TAG, "AVAudioSession activation error: failed to activate session")
         }
     }
 
     private fun observeInterruptions() {
         notificationObservers += NSNotificationCenter.defaultCenter().addObserverForName(
-            name = AVAudioSession.interruptionNotification,
+            name = AVAudioSessionInterruptionNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue()
         ) { notification ->
@@ -134,7 +138,7 @@ class IosAudioPlayer(
 
     private fun observeRouteChanges() {
         notificationObservers += NSNotificationCenter.defaultCenter().addObserverForName(
-            name = AVAudioSession.routeChangeNotification,
+            name = AVAudioSessionRouteChangeNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue()
         ) { notification ->
