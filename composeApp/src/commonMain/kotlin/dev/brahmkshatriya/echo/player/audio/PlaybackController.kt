@@ -1,6 +1,9 @@
 package dev.brahmkshatriya.echo.player.audio
 
 import dev.brahmkshatriya.echo.common.models.Track
+import dev.brahmkshatriya.echo.player.audio.recovery.RetryPolicy
+import dev.brahmkshatriya.echo.player.audio.recovery.backoffDelayMs
+import dev.brahmkshatriya.echo.player.audio.recovery.isTransientNetworkFailure
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import kotlinx.coroutines.CoroutineScope
@@ -45,7 +48,9 @@ class PlaybackController(
     private val persister: PlaybackPersister,
     private val logger: EchoLogger,
     private val scope: CoroutineScope,
-    private val onTrackStarted: (suspend (item: QueueItem) -> Unit)? = null
+    private val onTrackStarted: (suspend (item: QueueItem) -> Unit)? = null,
+    /** Bounded automatic network retry / stall watchdog configuration. */
+    private val retryPolicy: RetryPolicy = RetryPolicy()
 ) : RemoteCommandListener {
 
     private val _state = MutableStateFlow(PlaybackState())
@@ -58,6 +63,14 @@ class PlaybackController(
     private var resolveJob: Job? = null
     private var volume: Float = 1f
     private var speed: Float = 1f
+
+    /** Last prepared engine request, retained so the watchdog can re-prepare it. */
+    private var lastRequest: EngineRequest? = null
+    private var lastRequestWasRemote: Boolean = false
+
+    /** Consecutive auto-recoveries performed for the current track by the watchdog. */
+    private var watchdogRecoveriesForTrack: Int = 0
+    private var watchdogRecoveredTrackId: String? = null
 
     init {
         var lastPlaying = false
@@ -101,7 +114,63 @@ class PlaybackController(
                 if (_state.value.current != null) persister.save(_state.value)
             }
         }
+        startWatchdog()
         engine.setRemoteCommandListener(this)
+    }
+
+    /**
+     * Playback watchdog: samples the engine periodically and, when a remote
+     * track has been buffering without progress for longer than the stall
+     * timeout, transparently re-prepares it once. If the same track stalls
+     * again after that automatic recovery, playback is stopped with a clear
+     * error instead of retrying forever.
+     */
+    private fun startWatchdog() {
+        scope.launch {
+            val tracker = dev.brahmkshatriya.echo.player.audio.recovery.PlaybackStallTracker(
+                stallTimeoutMs = retryPolicy.stallTimeoutMs,
+                nowMs = { dev.brahmkshatriya.echo.player.domain.nowEpochMs() }
+            )
+            while (true) {
+                delay(WATCHDOG_TICK_MS)
+                val es = engine.engineState.value
+                val currentId = _state.value.current?.id
+                if (currentId == null) continue
+                if (tracker.onTick(currentId, es.isPlaying, es.isBuffering, es.positionMs)) {
+                    handleStall(currentId)
+                }
+            }
+        }
+    }
+
+    private fun handleStall(currentId: String) {
+        val item = _state.value.current?.takeIf { it.id == currentId }
+            ?: _state.value.queue.firstOrNull { it.id == currentId }
+        // Only attempt an automatic recovery for remote streaming sources.
+        val request = lastRequest ?: return
+        if (!lastRequestWasRemote || item == null) {
+            if (item != null) {
+                surfacePlaybackFailure(item, EchoError.Playback("Playback stalled.", null))
+            }
+            return
+        }
+        if (watchdogRecoveredTrackId != currentId) {
+            watchdogRecoveredTrackId = currentId
+            watchdogRecoveriesForTrack = 0
+        }
+        watchdogRecoveriesForTrack++
+        if (watchdogRecoveriesForTrack > retryPolicy.maxAttempts) {
+            logger.warn(TAG, "Watchdog gave up on '$currentId' after $watchdogRecoveriesForTrack recoveries")
+            surfacePlaybackFailure(item, EchoError.Playback("Playback kept stalling.", null))
+            return
+        }
+        logger.info(TAG, "Watchdog: re-preparing stalled track '$currentId' (recovery $watchdogRecoveriesForTrack)")
+        scope.launch {
+            engine.prepare(request)
+            engine.setVolume(volume)
+            engine.setPlaybackSpeed(speed)
+            engine.play()
+        }
     }
 
     /** Restores the last persisted session (paused). */
@@ -277,37 +346,71 @@ class PlaybackController(
     private suspend fun startCurrent(item: QueueItem) {
         resolveJob?.cancel()
         resolveJob = scope.launch {
+            resetWatchdogFor(item.id)
             _state.value = _state.value.copy(
                 current = item, currentId = item.id, isResolving = true, error = null,
                 positionMs = 0, durationMs = item.track.duration ?: 0
             )
             pushNowPlaying(0, false)
             onTrackStarted?.invoke(item)
-            try {
-                val stream = resolver.resolve(item)
-                if (_state.value.current?.id != item.id) return@launch // changed meanwhile
-                engine.prepare(
-                    EngineRequest(
+
+            var failures = 0
+            while (true) {
+                if (failures > 0) {
+                    val backoff = backoffDelayMs(failures, retryPolicy)
+                    logger.info(TAG, "Retrying '${item.title}' in ${backoff}ms (failure #$failures)")
+                    delay(backoff)
+                    // The user may have moved to another track while we waited.
+                    if (_state.value.current?.id != item.id) return@launch
+                }
+                try {
+                    val stream = resolver.resolve(item)
+                    if (_state.value.current?.id != item.id) return@launch // changed meanwhile
+                    lastRequest = EngineRequest(
                         url = stream.url,
                         headers = stream.headers,
                         isLocalFile = stream.isLocalFile,
                         mimeType = stream.mimeType
                     )
-                )
-                engine.setVolume(volume)
-                engine.setPlaybackSpeed(speed)
-                engine.play()
-                _state.value = _state.value.copy(isResolving = false)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                val error = e.toPlaybackError()
-                logger.error(TAG, "Failed to resolve stream for '${item.title}': ${error.message}", e)
-                _state.value = _state.value.copy(isResolving = false, isPlaying = false, error = error.userMessage)
-                _messages.tryEmit(error.userMessage)
-                engine.stop()
+                    lastRequestWasRemote = !stream.isLocalFile
+                    engine.prepare(lastRequest!!)
+                    engine.setVolume(volume)
+                    engine.setPlaybackSpeed(speed)
+                    engine.play()
+                    _state.value = _state.value.copy(isResolving = false)
+                    return@launch
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    failures++
+                    // Bounded automatic retry for transient network failures
+                    // only; anything else surfaces immediately.
+                    if (e.isTransientNetworkFailure() && retryPolicy.canRetry(failures)) {
+                        logger.warn(TAG, "Transient failure resolving '${item.title}' (failure #$failures): ${e.message}")
+                        continue
+                    }
+                    surfacePlaybackFailure(item, e.toPlaybackError())
+                    return@launch
+                }
             }
         }
+    }
+
+    /**
+     * Unconditionally stops playback for the current item and surfaces [error]
+     * to the state + transient message flow.
+     */
+    private fun surfacePlaybackFailure(item: QueueItem, error: EchoError) {
+        logger.error(TAG, "Failed to resolve stream for '${item.title}': ${error.message}", error)
+        _state.value = _state.value.copy(isResolving = false, isPlaying = false, error = error.userMessage)
+        _messages.tryEmit(error.userMessage)
+        engine.stop()
+    }
+
+    /** Resets the watchdog recovery budget whenever a new track is loaded. */
+    private fun resetWatchdogFor(itemId: String) {
+        watchdogRecoveredTrackId = itemId
+        watchdogRecoveriesForTrack = 0
     }
 
     private suspend fun onTrackEnded() {
@@ -355,6 +458,7 @@ class PlaybackController(
 
     private companion object {
         const val TAG = "PlaybackController"
+        const val WATCHDOG_TICK_MS = 2_000L
     }
 }
 

@@ -1,0 +1,39 @@
+name: SBOM
+
+# Generates a Software Bill of Materials (CycloneDX) for the project and
+# publishes it with every release. See SECURITY.md.
+
+on:
+  release:
+    types: [ published ]
+  push:
+    branches: [ main ]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - '**/build.gradle.kts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sbom:
+    name: Generate CycloneDX SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-SBOM
+          path: sbom.cyclonedx.json
