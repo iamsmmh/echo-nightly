@@ -11,10 +11,10 @@ import subprocess
 
 def launch_time(output):
     if not re.search(r'^Status:\s*ok\s*$', output, re.M):
-        raise ValueError('Android launch did not succeed')
+        raise ValueError('Android launch did not succeed: ' + output[:2000])
     match = re.search(r'^TotalTime:\s*(\d+)\s*$', output, re.M)
     if not match or int(match[1]) <= 0:
-        raise ValueError('Android launch did not report a positive TotalTime')
+        raise ValueError('Android launch did not report a positive TotalTime: ' + output[:2000])
     return int(match[1])
 
 
@@ -34,12 +34,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--package', default='dev.brahmkshatriya.echo')
     parser.add_argument('--samples', type=int, default=5)
+    parser.add_argument('--apk', type=Path, help='Exact debug APK to install before measuring')
     args = parser.parse_args()
     if not 3 <= args.samples <= 20 or not re.fullmatch(r'[\w.]+', args.package):
         parser.error('Use a valid package and 3–20 samples')
-    component = adb('shell', 'cmd', 'package', 'resolve-activity', '--brief', args.package).strip().splitlines()[-1]
-    if not component.startswith(args.package + '/'):
-        raise ValueError('No launcher activity was resolved')
+    # UTP may uninstall the target after instrumentation. Benchmark a known
+    # build explicitly instead of depending on the test runner's cleanup policy.
+    candidates = [args.apk] if args.apk else sorted(Path('app-android/build/outputs/apk/debug').glob('*.apk'))
+    if len(candidates) != 1 or not candidates[0].is_file():
+        raise ValueError('Provide exactly one built debug APK with --apk')
+    adb('install', '-r', '-t', str(candidates[0]))
+    resolved = adb('shell', 'cmd', 'package', 'resolve-activity', '--brief',
+                   '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.LAUNCHER', args.package)
+    components = [line.strip() for line in resolved.splitlines() if line.strip().startswith(args.package + '/')]
+    if len(components) != 1:
+        raise ValueError('No unique launcher activity was resolved: ' + resolved[:2000])
+    component = components[0]
     samples = []
     for _ in range(args.samples):
         adb('shell', 'am', 'force-stop', args.package)

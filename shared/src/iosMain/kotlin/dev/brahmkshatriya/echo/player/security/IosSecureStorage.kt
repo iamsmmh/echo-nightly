@@ -13,25 +13,34 @@ import platform.Security.*
 class IosSecureStorage(name: String) : SecureStorage {
     private val service = "dev.brahmkshatriya.echo.$name"
 
-    private fun constant(value: CFTypeRef?): Any? = value?.let { CFBridgingRelease(CFRetain(it)) }
-
-    private fun query(key: String): Map<Any?, Any?> = mapOf(
-        constant(kSecClass) to constant(kSecClassGenericPassword),
-        constant(kSecAttrService) to service, constant(kSecAttrAccount) to key
-    )
-
-    private fun <T> withDictionary(values: Map<Any?, Any?>, block: (CFDictionaryRef?) -> T): T {
-        val retained = CFBridgingRetain(values)
-        return try { block(retained?.reinterpret()) } finally { if (retained != null) CFRelease(retained) }
+    // CFBoolean must stay a CFBoolean. Bridging a Kotlin Map through NSNumber
+    // changes its runtime type and SecItemCopyMatching rejects it with errSecParam.
+    private fun <T> dictionary(block: (CFMutableDictionaryRef) -> T): T {
+        val dictionary = CFDictionaryCreateMutable(null, 0,
+            kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
+            ?: throw SecureStorageException("Could not allocate credential query")
+        return try { block(dictionary) } finally { CFRelease(dictionary) }
     }
 
-    override fun get(key: String): String? = withDictionary(query(key) + mapOf(
-        constant(kSecReturnData) to constant(kCFBooleanTrue), constant(kSecMatchLimit) to constant(kSecMatchLimitOne)
-    )) { dictionary ->
+    private fun putObject(dictionary: CFMutableDictionaryRef, key: CFTypeRef?, value: Any) {
+        val retained = CFBridgingRetain(value) ?: throw SecureStorageException("Invalid credential attribute")
+        try { CFDictionarySetValue(dictionary, key, retained) } finally { CFRelease(retained) }
+    }
+
+    private fun <T> query(key: String, block: (CFMutableDictionaryRef) -> T): T = dictionary { query ->
+        CFDictionarySetValue(query, kSecClass, kSecClassGenericPassword)
+        putObject(query, kSecAttrService, service)
+        putObject(query, kSecAttrAccount, key)
+        block(query)
+    }
+
+    override fun get(key: String): String? = query(key) { query ->
+        CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
+        CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne)
         memScoped {
             val result = alloc<CFTypeRefVar>()
             result.value = null
-            val status = SecItemCopyMatching(dictionary, result.ptr)
+            val status = SecItemCopyMatching(query, result.ptr)
             when (status) {
                 errSecItemNotFound -> null
                 errSecSuccess -> (CFBridgingRelease(result.value) as? NSData)?.toByteArray()?.decodeToString()
@@ -41,20 +50,22 @@ class IosSecureStorage(name: String) : SecureStorage {
         }
     }
 
-    override fun put(key: String, value: String) {
-        val attributes = mapOf<Any?, Any?>(constant(kSecValueData) to value.encodeToByteArray().toNSData(),
-            constant(kSecAttrAccessible) to constant(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly))
-        val status = withDictionary(query(key)) { query ->
-            withDictionary(attributes) { update -> SecItemUpdate(query, update) }
+    override fun put(key: String, value: String) = query(key) { query ->
+        dictionary { attributes ->
+            putObject(attributes, kSecValueData, value.encodeToByteArray().toNSData())
+            CFDictionarySetValue(attributes, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+            val status = SecItemUpdate(query, attributes)
+            if (status == errSecItemNotFound) {
+                putObject(query, kSecValueData, value.encodeToByteArray().toNSData())
+                CFDictionarySetValue(query, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                val added = SecItemAdd(query, null)
+                if (added != errSecSuccess) throw SecureStorageException("Keychain write failed ($added)")
+            } else if (status != errSecSuccess) throw SecureStorageException("Keychain update failed ($status)")
         }
-        if (status == errSecItemNotFound) {
-            val added = withDictionary(query(key) + attributes) { SecItemAdd(it, null) }
-            if (added != errSecSuccess) throw SecureStorageException("Keychain write failed ($added)")
-        } else if (status != errSecSuccess) throw SecureStorageException("Keychain update failed ($status)")
     }
 
     override fun remove(key: String) {
-        val status = withDictionary(query(key)) { SecItemDelete(it) }
+        val status = query(key) { SecItemDelete(it) }
         if (status != errSecSuccess && status != errSecItemNotFound) throw SecureStorageException("Keychain deletion failed ($status)")
     }
 }

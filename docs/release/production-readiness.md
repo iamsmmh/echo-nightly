@@ -130,6 +130,16 @@ Missing test output, failures and skips do not count as a pass.
 | `2cd419c` / [34041886688](https://github.com/iamsmmh/echo-nightly/actions/runs/34041886688) | **169 JVM tests passed**. Three iOS Kotlin targets compiled and the **host build/XCTest step passed**. Native run: 170 tests, one Keychain test failure in the standalone runner (`errSecNotAvailable`); that integration test is moved, not skipped, into app-hosted XCTest. Android failed on Cast APIs. |
 | `d4aea3a` / [34043006014](https://github.com/iamsmmh/echo-nightly/actions/runs/34043006014) | Architecture, **173 JVM tests and 173 iOS native tests passed**. All three native targets compiled. Android found six legacy utility/radio compile errors; XCTest compilation found three `remove(key_:)` argument-label errors. Device tests were blocked by Android compilation. Corrections are in the next increment. |
 
+At `0065a89` / [34047283442](https://github.com/iamsmmh/echo-nightly/actions/runs/34047283442),
+Android/Wear/shared UI compilation and **8 Android unit tests passed**; **2 Android
+emulator tests passed**, exercising the real Keystore and Cast queue routing.
+JVM and native suites each passed **173 tests**. XCTest ran **5 tests: 4 passed,
+1 failed**. The app-hosted test exposed a real Keychain CFBoolean-bridging error
+(`errSecParam`, -50), rather than a permissions failure. A native CFDictionary
+implementation corrects the representation in the next increment. The separate
+startup probe also failed without sufficient diagnostics; it now installs the
+exact APK and publishes its failures through the CI diagnostic wrapper.
+
 Local static/YAML checks passed. The Python verification suite has **22 executed passing tests**, including
 benchmark-evidence validation. The first-frame probe is wired to the Android
 emulator lane; a result is not asserted until it has actually run. Local Kotlin/Android builds are unavailable:
