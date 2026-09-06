@@ -1,0 +1,143 @@
+Downloading https://services.gradle.org/distributions/gradle-9.0.0-bin.zip
+............10%.............20%.............30%.............40%.............50%............60%.............70%.............80%.............90%.............100%
+
+Welcome to Gradle 9.0.0!
+
+Here are the highlights of this release:
+ - Configuration Cache is the recommended execution mode
+ - Gradle requires JVM 17 or higher to run
+ - Build scripts use Kotlin 2.2 and Groovy 4.0
+ - Improved Kotlin DSL script compilation avoidance
+
+For more details see https://docs.gradle.org/9.0.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: assembleRelease
+
+> Configure project :common
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :composeApp
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Task :app:preBuild UP-TO-DATE
+> Task :common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :common:androidPreBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :common:preAndroidMainBuild UP-TO-DATE
+> Task :app:buildKotlinToolingMetadata
+> Task :common:mergeAndroidMainJniLibFolders
+> Task :common:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :app:checkReleaseDuplicateClasses
+WARNING: [Processor] Library '/home/runner/.gradle/caches/modules-2/files-2.1/androidx.media3/media3-session/1.8.0/e28b8a1b7941dd4c4da264d5e622274e7c8e6488/media3-session-1.8.0.aar' contains references to both AndroidX and old support library. This seems like the library is partially migrated. Jetifier will try to rewrite the library anyway.
+ Example of androidX reference: 'androidx/media3/session/legacy/LegacyParcelableUtil'
+ Example of support library reference: 'android/support/v4/media/MediaDescriptionCompat'
+
+> Task :common:copyAndroidMainJniLibsProjectOnly
+> Task :app:dataBindingMergeDependencyArtifactsRelease
+> Task :app:generateReleaseResValues
+> Task :app:extractReleaseSupportedLocales
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:generateReleaseResources
+> Task :common:generateAndroidMainEmptyResourceFiles
+> Task :app:generateReleaseBuildConfig
+> Task :common:writeAndroidMainAarMetadata
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:generateReleaseLocaleConfig
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:checkReleaseAarMetadata
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :common:processAndroidMainManifest
+> Task :app:packageReleaseResources
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:parseReleaseLocalResources
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractProguardFiles
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:javaPreCompileRelease
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:mergeReleaseAssets
+> Task :common:prepareLintJarForPublish
+> Task :app:compressReleaseAssets
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:mergeReleaseResources
+> Task :app:dataBindingGenBaseClassesRelease
+> Task :app:processReleaseResources
+> Task :common:extractAndroidMainAnnotations
+> Task :common:compileAndroidMain
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:47:19 'val monthNumber: Int' is deprecated. Use the 'month' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:47:45 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:48:20 'val monthNumber: Int' is deprecated. Use the 'month' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:51:19 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:52:20 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/EchoFile.kt:12:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/jvmCommon/kotlin/dev/brahmkshatriya/echo/common/models/EchoFileJvm.kt:12:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+
+> Task :common:processAndroidMainJavaRes
+> Task :common:bundleAndroidMainClassesToRuntimeJar
+> Task :common:bundleAndroidMainClassesToCompileJar
+> Task :common:createFullJarAndroidMain
+> Task :common:mergeAndroidMainJavaResource
+> Task :common:syncAndroidMainLibJars
+> Task :common:bundleAndroidMainLocalLintAar
+> Task :app:kspReleaseKotlin
+
+> Task :app:compileReleaseKotlin
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/download/tasks/MergingTask.kt:19:50 Argument type mismatch: actual type is 'List<File>', but 'List<EchoFile>' was expected.
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/download/tasks/TaggingTask.kt:21:48 Argument type mismatch: actual type is 'File', but 'EchoFile' was expected.
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/test/DownloadExtension.kt:30:1 Class 'DownloadExtension' is not abstract and does not implement abstract members:
+suspend fun merge(progressFlow: MutableStateFlow<Progress>, context: DownloadContext, files: List<EchoFile>): EchoFile
+suspend fun tag(progressFlow: MutableStateFlow<Progress>, context: DownloadContext, file: EchoFile): EchoFile
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/test/DownloadExtension.kt:60:26 Return type of 'download' is not a subtype of the return type of the overridden member 'suspend fun download(progressFlow: MutableStateFlow<Progress>, context: DownloadContext, source: Streamable.Source): EchoFile' defined in 'dev/brahmkshatriya/echo/common/clients/DownloadClient'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/test/DownloadExtension.kt:66:5 'merge' overrides nothing. Potential signatures for overriding:
+suspend fun merge(progressFlow: MutableStateFlow<Progress>, context: DownloadContext, files: List<EchoFile>): EchoFile
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/test/DownloadExtension.kt:72:5 'tag' overrides nothing. Potential signatures for overriding:
+suspend fun tag(progressFlow: MutableStateFlow<Progress>, context: DownloadContext, file: EchoFile): EchoFile
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/unified/UnifiedExtension.kt:64:1 Class 'UnifiedExtension' is not abstract and does not implement abstract member:
+suspend fun editPlaylistCover(playlist: Playlist, cover: EchoFile?): Unit
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/extensions/builtin/unified/UnifiedExtension.kt:568:5 'editPlaylistCover' overrides nothing. Potential signatures for overriding:
+suspend fun editPlaylistCover(playlist: Playlist, cover: EchoFile?): Unit
+e: file:///home/runner/work/echo-nightly/echo-nightly/app/src/main/java/dev/brahmkshatriya/echo/ui/playlist/edit/EditPlaylistViewModel.kt:177:49 Argument type mismatch: actual type is 'File', but 'EchoFile?' was expected.
+
+> Task :app:compileReleaseKotlin FAILED
+
+[Incubating] Problems report is available at: file:///home/runner/work/echo-nightly/echo-nightly/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3m 33s
+50 actionable tasks: 50 executed
+Configuration cache entry stored.
