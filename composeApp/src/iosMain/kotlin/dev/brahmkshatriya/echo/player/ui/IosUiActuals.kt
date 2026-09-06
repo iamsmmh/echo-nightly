@@ -14,7 +14,7 @@ import platform.darwin.NSObject
 actual fun platformOpenFilePicker() {
     val picker = UIDocumentPickerViewController(
         documentTypes = listOf("public.audio"),
-        inMode = UIDocumentPickerMode.Import
+        inMode = UIDocumentPickerMode.UIDocumentPickerModeImport
     )
     picker.allowsMultipleSelection = true
     picker.delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {

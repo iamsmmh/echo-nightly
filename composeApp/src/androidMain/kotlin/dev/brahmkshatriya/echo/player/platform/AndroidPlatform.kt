@@ -3,6 +3,7 @@ package dev.brahmkshatriya.echo.player.platform
 import android.content.Context
 import android.util.Log
 import dev.brahmkshatriya.echo.common.models.EchoFile
+import dev.brahmkshatriya.echo.common.models.resolve
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.domain.sanitizeUrl
@@ -32,12 +33,18 @@ object EchoPlayerAndroid {
 
 /** Logcat logger. */
 class AndroidEchoLogger : EchoLogger {
-    override fun debug(tag: String, message: String) = Log.d(tag, message)
-    override fun info(tag: String, message: String) = Log.i(tag, message)
-    override fun warn(tag: String, message: String, throwable: Throwable?) =
+    override fun debug(tag: String, message: String) {
+        Log.d(tag, message)
+    }
+    override fun info(tag: String, message: String) {
+        Log.i(tag, message)
+    }
+    override fun warn(tag: String, message: String, throwable: Throwable?) {
         Log.w(tag, message, throwable)
-    override fun error(tag: String, message: String, throwable: Throwable?) =
+    }
+    override fun error(tag: String, message: String, throwable: Throwable?) {
         Log.e(tag, message, throwable)
+    }
 }
 
 /** SharedPreferences backed key-value store. */

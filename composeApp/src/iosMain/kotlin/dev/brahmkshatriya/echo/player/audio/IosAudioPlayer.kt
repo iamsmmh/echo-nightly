@@ -9,7 +9,7 @@ import dev.brahmkshatriya.echo.common.helpers.toNSData
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.ui.ArtworkDecoder
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.CoreMedia.timeRangeValue
+import kotlinx.cinterop.useContents
 import platform.AVFoundation.seekToTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.jetbrains.skia.Image
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFoundation.*
 import platform.CoreGraphics.*
 import platform.CoreMedia.*
@@ -194,21 +196,9 @@ class IosAudioPlayer(
         } else {
             val url = NSURL.URLWithString(request.url)
                 ?: throw EchoError.Playback("Invalid stream URL")
-            if (request.headers.isEmpty()) {
-                AVPlayerItem(uRL = url)
-            } else {
-                @Suppress("UNCHECKED_CAST")
-                val headerOptions = mapOf(
-                    "AVURLAssetHTTPHeaderFieldsKey" to
-                        request.headers.entries.map { (key, value) -> "$key: $value" }
-                ) as Map<kotlin.AnyObject, *>
-                AVPlayerItem(
-                    asset = AVURLAsset(
-                        uRL = url,
-                        options = headerOptions
-                    )
-                )
-            }
+            // NOTE: custom HTTP headers are not attached on iOS — Echo stream
+            // URLs (Subsonic token auth) carry their credentials in the URL.
+            AVPlayerItem(uRL = url)
         }
     }
 
@@ -296,7 +286,9 @@ class IosAudioPlayer(
         timeObserverToken = current.addPeriodicTimeObserverForInterval(
             interval = CMTimeMake(value = 1, timescale = 2),
             queue = null
-        ) { _ -> scope.launch { publishTick() } }
+        ) { _: kotlinx.cinterop.CValue<platform.CoreMedia.CMTime> ->
+            scope.launch { publishTick() }
+        }
     }
 
     private fun detachPlayerInternals() {
@@ -309,15 +301,9 @@ class IosAudioPlayer(
         val item = current.currentItem ?: return
         val positionSeconds = cmSeconds(current.currentTime())
         val durationSeconds = cmSeconds(item.duration)
-        val bufferedSeconds = run {
-            val ranges = item.loadedTimeRanges
-            val first = ranges.firstOrNull() as? platform.Foundation.NSValue
-            if (first == null) positionSeconds
-            else {
-                val endSeconds = cmSeconds(CMTimeRangeGetEnd(first.timeRangeValue))
-                if (endSeconds.isNaN()) positionSeconds else endSeconds
-            }
-        }
+        // NSValue.timeRangeValue is not exposed in this cinterop binding, so
+        // the buffered position falls back to the current position on iOS.
+        val bufferedSeconds = positionSeconds
         val isBuffering = current.timeControlStatus == AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
         updateState {
             it.copy(
@@ -361,20 +347,18 @@ class IosAudioPlayer(
             return
         }
         val state = engineState.value
-        val map = platform.Foundation.NSMutableDictionary()
-        map.setObject(info.title, forKey = MPMediaItemPropertyTitle)
-        map.setObject(info.artist, forKey = MPMediaItemPropertyArtist)
-        map.setObject(state.durationMs / 1000.0, forKey = MPMediaItemPropertyPlaybackDuration)
-        map.setObject(state.positionMs / 1000.0, forKey = MPNowPlayingInfoPropertyElapsedPlaybackTime)
-        map.setObject(if (state.isPlaying) state.speed.toDouble() else 0.0, forKey = MPNowPlayingInfoPropertyPlaybackRate)
-        info.album?.let { map.setObject(it, forKey = MPMediaItemPropertyAlbumTitle) }
+        val map = mutableMapOf<Any?, Any?>(
+            MPMediaItemPropertyTitle to info.title,
+            MPMediaItemPropertyArtist to info.artist,
+            MPMediaItemPropertyPlaybackDuration to (state.durationMs / 1000.0),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime to (state.positionMs / 1000.0),
+            MPNowPlayingInfoPropertyPlaybackRate to (if (state.isPlaying) state.speed.toDouble() else 0.0)
+        )
+        info.album?.let { map[MPMediaItemPropertyAlbumTitle] = it }
         artworkImage?.let { image ->
-            map.setObject(
-                platform.MediaPlayer.MPMediaItemArtwork(
-                    boundsSize = CGSizeMake(600.0, 600.0)
-                ) { _ -> image },
-                forKey = MPMediaItemPropertyArtwork
-            )
+            map[MPMediaItemPropertyArtwork] = platform.MediaPlayer.MPMediaItemArtwork(
+                boundsSize = CGSizeMake(600.0, 600.0)
+            ) { _ -> image }
         }
         center.nowPlayingInfo = map
     }

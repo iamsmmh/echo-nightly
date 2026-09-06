@@ -11,7 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import platform.AVFoundation.AVAudioSession
+import platform.AVFAudio.AVAudioSession
 import platform.Foundation.NSLog
 import platform.UIKit.UIViewController
 

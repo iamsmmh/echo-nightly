@@ -9,20 +9,14 @@ import dev.brahmkshatriya.echo.common.models.resolve
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.domain.sanitizeUrl
+import dev.brahmkshatriya.echo.common.models.bytes
+import dev.brahmkshatriya.echo.common.models.write
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.*
 import platform.AVFoundation.*
-import platform.Foundation.NSFileHandle
-import platform.Foundation.NSFileManager
-import platform.Foundation.NSMutableURLRequest
-import platform.Foundation.NSURL
-import platform.Foundation.NSURLSession
-import platform.Foundation.NSURLSessionConfiguration
-import platform.Foundation.NSURLSessionDownloadDelegateProtocol
-import platform.Foundation.NSURLSessionTaskDelegateProtocol
-import platform.Foundation.NSUserDefaults
-import platform.Foundation.dataTaskWithRequest
-import platform.Foundation.downloadTaskWithRequest
 import platform.darwin.NSObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -41,7 +35,7 @@ class IosHttpClient(
                 val url = NSURL.URLWithString(request.url)
                     ?: throw EchoError.Network("Invalid URL: ${sanitizeUrl(request.url)}")
                 val session = NSURLSession.sessionWithConfiguration(configurationFor(request))
-                val urlRequest = NSMutableURLRequest(request = url)
+                val urlRequest = NSMutableURLRequest(uRL = url)
                 urlRequest.httpMethod = request.method
                 request.headers.forEach { (key, value) ->
                     urlRequest.setValue(value, forHTTPHeaderField = key)
@@ -94,7 +88,7 @@ class IosHttpClient(
             val session = NSURLSession.sessionWithConfiguration(
                 configuration, delegate = delegate, delegateQueue = null
             )
-            val urlRequest = NSMutableURLRequest(request = url)
+            val urlRequest = NSMutableURLRequest(uRL = url)
             urlRequest.httpMethod = request.method
             request.headers.forEach { (key, value) ->
                 urlRequest.setValue(value, forHTTPHeaderField = key)
@@ -132,7 +126,7 @@ private class DownloadDelegate(
     private val destination: EchoFile,
     private val appendRequested: Boolean,
     private val onProgress: (Long, Long) -> Unit,
-    private val continuation: kotlin.coroutines.CancellableContinuation<EchoFile>,
+    private val continuation: CancellableContinuation<EchoFile>,
     private val logger: EchoLogger
 ) : NSObject(), NSURLSessionDownloadDelegateProtocol, NSURLSessionTaskDelegateProtocol {
 
@@ -156,30 +150,23 @@ private class DownloadDelegate(
     override fun URLSession(
         session: NSURLSession,
         downloadTask: platform.Foundation.NSURLSessionDownloadTask,
-        didFinishDownloadingToURL location: NSURL
+        didFinishDownloadingToURL: NSURL
     ) {
         val manager = NSFileManager.defaultManager()
         val rangeApplied = baseOffset(downloadTask) > 0
         try {
+            val tempPath = didFinishDownloadingToURL.path
+                ?: throw EchoError.Storage("Missing download temp file")
+            val tempBytes = manager.contentsAtPath(tempPath)?.toByteArray()
+                ?: throw EchoError.Storage("Could not read download temp file")
             if (rangeApplied && destination.exists()) {
-                val tempPath = location.path ?: throw EchoError.Storage("Missing download temp file")
-                val tempData = manager.contentsAtPath(tempPath)
-                    ?: throw EchoError.Storage("Could not read download temp file")
-                val handle = NSFileHandle.fileHandleForWritingAtPath(destination.absolutePath)
-                    ?: throw EchoError.Storage("Could not open partial file for append")
-                handle.seekToEndOfFile()
-                @OptIn(ExperimentalForeignApi::class)
-                handle.writeData(tempData)
-                handle.closeFile()
-                manager.removeItemAtPath(tempPath, error = null)
+                destination.write(destination.bytes() + tempBytes)
             } else {
                 if (destination.exists()) destination.delete()
                 destination.parent?.let { EchoFile(it).mkdirs() }
-                val target = NSURL.fileURLWithPath(destination.absolutePath)
-                if (!manager.moveItemAtURL(location, toURL = target, error = null)) {
-                    throw EchoError.Storage("Could not move download into place")
-                }
+                destination.write(tempBytes)
             }
+            manager.removeItemAtPath(tempPath, error = null)
             logger.debug(TAG, "Download finished: ${destination.absolutePath} (${destination.length()} bytes)")
             if (continuation.isActive) continuation.resume(destination)
         } catch (e: Throwable) {
@@ -275,25 +262,25 @@ class IosMetadataReader : MetadataReader {
     override fun read(path: String): AudioMetadata {
         return runCatching {
             val asset = AVURLAsset(uRL = NSURL.fileURLWithPath(path), options = null)
-            val metadata = asset.commonMetadata
+            val metadata = asset.commonMetadata.filterIsInstance<AVMetadataItem>()
 
+            // The AVMetadataCommonKey* constants are plain NSString values.
             fun text(key: String): String? =
                 metadata.firstOrNull { it.commonKey == key }?.stringValue?.takeIf { it.isNotBlank() }
 
-            val artworkData = metadata.firstOrNull { it.commonKey == AVMetadataCommonKeyArtwork }?.dataValue
-            // CMTime has no `.seconds` in Kotlin — compute from value/timescale
-            val durationCm = asset.duration
-            val durationSeconds =
-                if (durationCm.timescale == 0) Double.NaN
-                else durationCm.value.toDouble() / durationCm.timescale
+            val artworkData = metadata.firstOrNull { it.commonKey == "artwork" }?.dataValue
+            // CMTime is a CValue — read value/timescale through useContents.
+            val durationSeconds = asset.duration.useContents {
+                if (timescale == 0) Double.NaN else value.toDouble() / timescale
+            }
 
-            val yearText = text(AVMetadataCommonKeyCreationDate)
+            val yearText = text("creationDate")
 
             AudioMetadata(
-                title = text(AVMetadataCommonKeyTitle),
-                artist = text(AVMetadataCommonKeyArtist),
-                album = text(AVMetadataCommonKeyAlbum),
-                albumArtist = text(AVMetadataCommonKeyAlbumArtist),
+                title = text("title"),
+                artist = text("artist"),
+                album = text("album"),
+                albumArtist = text("albumArtist"),
                 genre = null,
                 year = yearText?.take(4)?.toIntOrNull(),
                 trackNumber = null,
