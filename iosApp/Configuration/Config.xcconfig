@@ -1,0 +1,11 @@
+// Centralized versioning for the iOS app.
+// CI overrides MARKETING_VERSION / CURRENT_PROJECT_VERSION via
+//   xcodebuild MARKETING_VERSION=$VERSION_NAME CURRENT_PROJECT_VERSION=$BUILD_NUMBER
+// Local builds fall back to the safe defaults below (kept in sync with the
+// Android versionName scheme "3.0.<git-count>").
+MARKETING_VERSION = 3.0.0
+CURRENT_PROJECT_VERSION = 1
+
+// Deployment target shared by the app, tests and the Kotlin framework
+// (must stay <= the Compose Multiplatform minimum, currently iOS 13+).
+IPHONEOS_DEPLOYMENT_TARGET = 15.0

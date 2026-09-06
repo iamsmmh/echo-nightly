@@ -1,0 +1,108 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch: { }
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build & Test Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build common + composeApp (Android targets)
+        run: |
+          set -o pipefail
+          # :composeApp uses the AGP KMP library plugin — no variant assemble
+          # tasks exist, so build via the lifecycle 'assemble' task.
+          ./gradlew :common:assemble :composeApp:assemble --stacktrace 2>&1 | tee /tmp/ci.log
+
+      - name: Run shared unit tests (commonTest via Android target)
+        run: |
+          set -o pipefail
+          # Discover the Android unit-test task name (varies by AGP/KMP plugin)
+          TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
+            | grep -oE 'test(Debug|Release)UnitTest' | sort -u || true)
+          if [ -n "$TEST_TASKS" ]; then
+            echo "Discovered test tasks: $TEST_TASKS"
+            ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') --stacktrace 2>&1 | tee -a /tmp/ci.log
+          else
+            echo "::warning::No Android unit-test task found in :composeApp"
+            ./gradlew -q :composeApp:tasks --all 2>&1 | tee -a /tmp/ci.log
+          fi
+
+      - name: Build the Android app (regression check)
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace 2>&1 | tee -a /tmp/ci.log
+
+      - name: Report build errors (attach log to branch + PR comment)
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          set -e
+          LOG_NAME="ci-failure-${{ github.workflow }}-${{ github.run_number }}.log"
+          # 1) attach the log to the PR branch so it can be inspected offline
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch -q origin "$GITHUB_HEAD_REF"
+          git checkout -q -B log-branch "origin/$GITHUB_HEAD_REF"
+          cp "/tmp/ci.log" ".ci-logs/$LOG_NAME" 2>/dev/null || { mkdir -p .ci-logs; cp /tmp/ci.log ".ci-logs/$LOG_NAME"; }
+          git add -f ".ci-logs/$LOG_NAME"
+          git commit -q -m "ci: attach failure log $LOG_NAME [skip ci]"
+          for i in 1 2 3; do
+            if git push -q origin HEAD:"$GITHUB_HEAD_REF"; then break; fi
+            git fetch -q origin "$GITHUB_HEAD_REF"
+            git rebase -q "origin/$GITHUB_HEAD_REF" || { git rebase --abort; exit 0; }
+          done
+          # 2) also try a PR comment with the digest
+          {
+            echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
+            echo
+            echo '```'
+            tail -n 50 "/tmp/ci.log" 2>/dev/null || true
+            echo '```'
+          } > /tmp/report.md
+          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
+          curl -s -o /dev/null -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -d @/tmp/payload.json || true
+      - name: Upload app APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-test-results
+          path: composeApp/build/test-results/**/*.xml

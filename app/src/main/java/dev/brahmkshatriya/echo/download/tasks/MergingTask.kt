@@ -3,7 +3,7 @@ package dev.brahmkshatriya.echo.download.tasks
 import android.content.Context
 import dev.brahmkshatriya.echo.download.Downloader
 import dev.brahmkshatriya.echo.download.db.models.TaskType
-import java.io.File
+import dev.brahmkshatriya.echo.common.models.EchoFile
 
 class MergingTask(
     context: Context,
@@ -16,7 +16,7 @@ class MergingTask(
         val downloadContext = getDownloadContext()
         val download = getDownload()
         val file = withDownloadExtension {
-            merge(progressFlow, downloadContext, download.toMergeFiles.map { File(it) })
+            merge(progressFlow, downloadContext, download.toMergeFiles.map { EchoFile(it) })
         }
         dao.insertDownloadEntity(download.copy(toTagFile = file.toString()))
     }

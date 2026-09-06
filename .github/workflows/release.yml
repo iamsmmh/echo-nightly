@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g. 3.0.42)'
+        required: false
+        default: ''
+
+jobs:
+  release:
+    name: Build & publish Android + unsigned iOS artifacts
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    env:
+      VERSION_NAME: ${{ github.event.inputs.version_name || github.ref_name }}
+      BUILD_NUMBER: "${{ github.run_number }}"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Normalize version name
+        run: |
+          VERSION="${VERSION_NAME#v}"
+          echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "Releasing $VERSION (build $BUILD_NUMBER)"
+
+      - name: Run shared unit tests
+        run: |
+          TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
+            | grep -oE 'test(Debug|Release)UnitTest' | sort -u || true)
+          if [ -n "$TEST_TASKS" ]; then
+            ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') :composeApp:iosSimulatorArm64Test --stacktrace
+          else
+            ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
+          fi
+
+      - name: Build Android release APK
+        run: ./gradlew :app:assembleStable --stacktrace
+
+      - name: Rename Android artifacts
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/stable/app-stable.apk "dist/Echo-Android-$VERSION_NAME.apk" || \
+            cp app/build/outputs/apk/release/app-release.apk "dist/Echo-Android-$VERSION_NAME.apk"
+
+      - name: Select an available iPhone simulator
+        run: |
+          SIMULATOR=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | sed 's/[[:space:]]*$//')
+          if [ -z "$SIMULATOR" ]; then echo "No iPhone simulator found"; exit 1; fi
+          echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------
+      # Optional signing: only runs when Apple secrets are configured.
+      # Without secrets the pipeline produces a valid UNSIGNED IPA which can
+      # be re-signed locally (Sideloadly/AltStore) — it is NOT App Store or
+      # TestFlight installable.
+      # ------------------------------------------------------------------
+      - name: Prepare keychain & signing identities (optional)
+        if: env.IOS_CERTIFICATE_BASE64 != ''
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -e
+          KEYCHAIN=build.keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$IOS_CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          security import certificate.p12 \
+            -k "$KEYCHAIN" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+      - name: Archive & package IPA
+        run: |
+          set -o pipefail
+          if [ -n "${{ secrets.IOS_CERTIFICATE_BASE64 }}" ] && [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" ]; then
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/release.mobileprovision
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}"
+            xcodebuild -project iosApp/iosApp.xcodeproj \
+              -scheme iosApp -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath build/iosApp.xcarchive \
+              -derivedDataPath build/DerivedData \
+              DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+              PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
+              CODE_SIGN_STYLE=Manual \
+              MARKETING_VERSION="$VERSION_NAME" \
+              CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+              archive | xcpretty
+            xcodebuild -exportArchive \
+              -archivePath build/iosApp.xcarchive \
+              -exportOptionsPlist <(cat <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>release-testing</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>manual</string>
+          </dict></plist>
+          EOF
+              ) \
+              -exportPath build/export | xcpretty
+            cp build/export/*.ipa dist/Echo-iOS-$VERSION_NAME.ipa
+          else
+            echo "No signing secrets configured — producing UNSIGNED IPA (not App Store installable)."
+            xcodebuild -project iosApp/iosApp.xcodeproj \
+              -scheme iosApp -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath build/iosApp.xcarchive \
+              -derivedDataPath build/DerivedData \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+              MARKETING_VERSION="$VERSION_NAME" \
+              CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+              archive | xcpretty
+            APP_PATH=$(find build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)
+            test -n "$APP_PATH" || { echo "No .app in archive"; exit 1; }
+            mkdir -p build/ipa/Payload
+            cp -R "$APP_PATH" build/ipa/Payload/Echo.app
+            (cd build/ipa && /usr/bin/zip -qry "Echo-iOS-$VERSION_NAME-unsigned.ipa" Payload)
+            cp "build/ipa/Echo-iOS-$VERSION_NAME-unsigned.ipa" dist/
+            unzip -t "dist/Echo-iOS-$VERSION_NAME-unsigned.ipa" > /dev/null && echo "IPA valid"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Release-$VERSION_NAME
+          path: dist/*
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Echo ${{ env.VERSION_NAME }}"
+          draft: true
+          prerelease: false
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

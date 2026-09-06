@@ -4,7 +4,7 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import dev.brahmkshatriya.echo.download.Downloader
 import dev.brahmkshatriya.echo.download.db.models.TaskType
-import java.io.File
+import dev.brahmkshatriya.echo.common.models.EchoFile
 
 class TaggingTask(
     private val app: Context,
@@ -18,7 +18,7 @@ class TaggingTask(
         val downloadContext = getDownloadContext()
         val download = getDownload()
         val file = withDownloadExtension {
-            tag(progressFlow, downloadContext, File(download.toTagFile!!))
+            tag(progressFlow, downloadContext, EchoFile(download.toTagFile!!))
         }
         dao.insertDownloadEntity(download.copy(finalFile = file.toString()))
         MediaScannerConnection.scanFile(
