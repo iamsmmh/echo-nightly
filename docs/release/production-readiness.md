@@ -38,6 +38,9 @@ remaining gaps are disclosed below, in accordance with `AI_POLICY.md`.
 - iOS interruption, route-loss and audio-service-reset decisions are centralized
   in a tested policy. AVPlayer session activation, notification/remote-command
   cleanup, metadata and watchdog handling were hardened.
+- The Android watchdog now confines player reads/actions to the main looper,
+  uses a monotonic clock, observes actual position progress on every tick, and
+  monitors buffering intent without fighting pauses/audio-focus suppression.
 - The iOS artwork decoder, retained document-picker delegate and AirPlay picker
   bindings were fixed, as were Android Auto, WorkManager and Wear API errors.
 - Automatic startup starts existing playback restoration and download health
@@ -157,6 +160,14 @@ startup probe still reported an unknown launch state without a first-frame
 time; those are not accepted as measurements. A launcher lifecycle test and
 crash/activity-log capture are added to distinguish a real startup problem from
 measurement setup.
+
+At `3e48b54` / [34049958363](https://github.com/iamsmmh/echo-nightly/actions/runs/34049958363),
+Android compilation/unit tests and the entire iOS lane passed again. The new
+Android launcher test exposed a real process crash: `PlaybackWatchdog.tick`
+read ExoPlayer on `Dispatchers.IO`. The device run recorded **3 tests, 1 failure**;
+this explains why valid startup timings were missing. The watchdog is corrected
+to use the main player looper, with additional pause/buffering/progress rules
+covered by regression tests. The launcher test remains enabled.
 
 Local static/YAML checks passed. The Python verification suite has **25 executed passing tests**, including
 benchmark-evidence validation. The first-frame probe is wired to the Android
