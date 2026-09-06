@@ -223,7 +223,7 @@ class PlaybackController(
                 val es = engine.engineState.value
                 val currentId = _state.value.current?.id
                 if (tracker.onTick(currentId, playRequested && !es.suppressed && !_state.value.isResolving, es.isBuffering, es.positionMs)) {
-                    handleStall(currentId)
+                    if (currentId != null) handleStall(currentId)
                 }
             }
         }

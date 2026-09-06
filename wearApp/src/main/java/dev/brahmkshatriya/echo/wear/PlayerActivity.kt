@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.wear.widget.RoundedDrawable
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Wearable
@@ -35,9 +34,8 @@ class PlayerActivity : AppCompatActivity() {
     private fun roundIcons() {
         listOf(R.id.button_play_pause, R.id.button_next, R.id.button_previous).forEach { id ->
             val button = findViewById<ImageButton>(id)
-            button.background?.let {
-                button.background = RoundedDrawable.wrap(it).apply { cornerRadius = button.width / 2f }
-            }
+            // The XML background is already an oval; its outline is size-aware.
+            button.clipToOutline = true
         }
     }
 

@@ -34,7 +34,7 @@ class DefaultStreamResolver(
         val track = item.track
 
         // 1. Downloaded offline file
-        downloads.completedFileFor(item.extensionId, track.id)?.let { path ->
+        downloads.verifiedCompletedFileFor(item.extensionId, track.id)?.let { path ->
             logger.debug(TAG, "Resolving downloaded file for '${track.title}'")
             return ResolvedStream(
                 url = path, isLocalFile = true,

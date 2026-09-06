@@ -43,6 +43,7 @@ class IosHttpClient(
                 request.body?.let { urlRequest.HTTPBody = it.toNSData() }
 
                 val task = session.dataTaskWithRequest(urlRequest) { data, response, error ->
+                    session.finishTasksAndInvalidate()
                     if (error != null) {
                         if (continuation.isActive) {
                             continuation.resumeWithException(
@@ -61,7 +62,7 @@ class IosHttpClient(
                         continuation.resume(HttpResponse(http?.statusCode?.toInt() ?: 0, headers, body))
                     }
                 }
-                continuation.invokeOnCancellation { task.cancel() }
+                continuation.invokeOnCancellation { task.cancel(); session.invalidateAndCancel() }
                 task.resume()
             } catch (e: Throwable) {
                 if (continuation.isActive) {
@@ -84,7 +85,9 @@ class IosHttpClient(
             val configuration = configurationFor(request).apply {
                 timeoutIntervalForResource = 3600.0
             }
-            val delegate = DownloadDelegate(destination, append, onProgress, continuation, logger)
+            val resumeFrom = if (append && destination.exists()) destination.length() else 0
+            val range = if (resumeFrom > 0) "bytes=$resumeFrom-" else request.headers.header("Range")
+            val delegate = DownloadDelegate(destination, resumeFrom, range, onProgress, continuation, logger)
             val session = NSURLSession.sessionWithConfiguration(
                 configuration, delegate = delegate, delegateQueue = null
             )
@@ -93,9 +96,8 @@ class IosHttpClient(
             request.headers.forEach { (key, value) ->
                 urlRequest.setValue(value, forHTTPHeaderField = key)
             }
-            if (append && destination.exists() && destination.length() > 0) {
-                urlRequest.setValue("bytes=${destination.length()}-", forHTTPHeaderField = "Range")
-            }
+            urlRequest.setValue("identity", forHTTPHeaderField = "Accept-Encoding")
+            if (range != null) urlRequest.setValue(range, forHTTPHeaderField = "Range")
             val task = session.downloadTaskWithRequest(urlRequest)
             continuation.invokeOnCancellation {
                 task.cancel()
@@ -124,7 +126,8 @@ class IosHttpClient(
 /** Streams downloads to disk with progress; supports HTTP range resume. */
 private class DownloadDelegate(
     private val destination: EchoFile,
-    private val appendRequested: Boolean,
+    private val resumeFrom: Long,
+    private val requestedRange: String?,
     private val onProgress: (Long, Long) -> Unit,
     private val continuation: CancellableContinuation<EchoFile>,
     private val logger: EchoLogger
@@ -132,7 +135,7 @@ private class DownloadDelegate(
 
     private fun baseOffset(task: platform.Foundation.NSURLSessionTask): Long {
         val status = (task.response as? platform.Foundation.NSHTTPURLResponse)?.statusCode?.toLong() ?: 200L
-        return if (appendRequested && status == 206L) destination.length() else 0L
+        return if (resumeFrom > 0 && status == 206L) resumeFrom else 0L
     }
 
     override fun URLSession(
@@ -153,18 +156,36 @@ private class DownloadDelegate(
         didFinishDownloadingToURL: NSURL
     ) {
         val manager = NSFileManager.defaultManager()
-        val rangeApplied = baseOffset(downloadTask) > 0
         try {
+            val response = downloadTask.response as? NSHTTPURLResponse ?: throw EchoError.Network("Missing HTTP response")
+            val headers = response.allHeaderFields.entries.associate { it.key.toString() to it.value.toString() }
+            val plan = validateDownloadResponse(response.statusCode.toInt(), headers, resumeFrom, requestedRange)
             val tempPath = didFinishDownloadingToURL.path
                 ?: throw EchoError.Storage("Missing download temp file")
-            val tempBytes = manager.contentsAtPath(tempPath)?.toByteArray()
-                ?: throw EchoError.Storage("Could not read download temp file")
-            if (rangeApplied && destination.exists()) {
-                destination.write(destination.bytes() + tempBytes)
-            } else {
+            plan.verifyBodySize(EchoFile(tempPath).length())
+            destination.parent?.let { EchoFile(it).mkdirs() }
+            if (!plan.append) {
                 if (destination.exists()) destination.delete()
-                destination.parent?.let { EchoFile(it).mkdirs() }
-                destination.write(tempBytes)
+                if (!manager.moveItemAtPath(tempPath, toPath = destination.absolutePath, error = null)) {
+                    throw EchoError.Storage("Could not save downloaded file")
+                }
+            } else {
+                val input = NSFileHandle.fileHandleForReadingAtPath(tempPath)
+                    ?: throw EchoError.Storage("Could not read downloaded bytes")
+                val output = NSFileHandle.fileHandleForWritingAtPath(destination.absolutePath)
+                    ?: run { input.closeFile(); throw EchoError.Storage("Could not append downloaded bytes") }
+                try {
+                    output.seekToEndOfFile()
+                    while (true) {
+                        val chunk = input.readDataOfLength(64uL * 1024uL)
+                        if (chunk.length == 0uL) break
+                        output.writeData(chunk)
+                    }
+                    output.synchronizeFile()
+                } finally {
+                    input.closeFile()
+                    output.closeFile()
+                }
             }
             manager.removeItemAtPath(tempPath, error = null)
             logger.debug(TAG, "Download finished: ${destination.absolutePath} (${destination.length()} bytes)")

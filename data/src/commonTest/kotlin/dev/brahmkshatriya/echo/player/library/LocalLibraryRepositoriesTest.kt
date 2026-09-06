@@ -59,7 +59,7 @@ class PlaylistRepositoryTest {
 
         // reorder
         assertTrue(repo.moveTrack(playlist.id, 0, 2))
-        assertEquals("c", repo.get(playlist.id)!!.tracks[0].trackId)
+        assertEquals(listOf("b", "c", "a"), repo.get(playlist.id)!!.tracks.map { it.trackId })
 
         // remove
         assertTrue(repo.removeTrack(playlist.id, "c"))
