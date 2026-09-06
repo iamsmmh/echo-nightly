@@ -1,19 +1,38 @@
 package dev.brahmkshatriya.echo.common.models
 
+import java.io.File
+
 /**
- * On JVM targets [EchoFile] is a transparent alias of `java.io.File`, which
- * keeps the published extension API source compatible with existing extensions.
+ * On JVM targets [EchoFile] wraps a [java.io.File].
+ *
+ * (An `actual typealias` cannot satisfy open-val expects, and extending `File`
+ * cannot `actual override` its synthetic Java properties — so this is a plain
+ * wrapper. Extension code can reach the underlying file via [file].)
  */
-actual class EchoFile actual constructor(path: String) : java.io.File(path) {
-    // Inherited Java synthetic properties do not satisfy expect members —
-    // they must be declared explicitly as actual overrides.
-    actual override val absolutePath: String get() = super.getAbsolutePath()
-    actual override val name: String get() = super.getName()
-    actual override val parent: String? get() = super.getParent()
+actual class EchoFile actual constructor(path: String) {
+
+    /** The wrapped [java.io.File]. */
+    val file: File = File(path)
+
+    actual val absolutePath: String get() = file.absolutePath
+
+    actual val name: String get() = file.name
+
+    actual val parent: String? get() = file.parent
+
+    actual fun exists(): Boolean = file.exists()
+
+    actual fun delete(): Boolean = file.delete()
+
+    actual fun length(): Long = file.length()
+
+    actual fun mkdirs(): Boolean = file.mkdirs()
+
+    actual fun isDirectory(): Boolean = file.isDirectory
 }
 
-actual fun EchoFile.bytes(): ByteArray = this.readBytes()
+actual fun EchoFile.bytes(): ByteArray = file.readBytes()
 
-actual fun EchoFile.write(bytes: ByteArray) = this.writeBytes(bytes)
+actual fun EchoFile.write(bytes: ByteArray) = file.writeBytes(bytes)
 
-actual fun EchoFile.resolve(child: String): EchoFile = EchoFile(java.io.File(path, child).path)
+actual fun EchoFile.resolve(child: String): EchoFile = EchoFile(File(file.path, child).path)
