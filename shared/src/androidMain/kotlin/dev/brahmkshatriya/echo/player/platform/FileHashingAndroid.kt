@@ -9,7 +9,7 @@ import java.io.RandomAccessFile
  * Returns at most [count] bytes; empty array on I/O failure.
  */
 actual fun EchoFile.readPrefix(count: Int): ByteArray = runCatching {
-    RandomAccessFile(this, "r").use { raf ->
+    RandomAccessFile(absolutePath, "r").use { raf ->
         val n = minOf(count.toLong(), raf.length()).toInt()
         val buffer = ByteArray(n)
         raf.readFully(buffer)
@@ -23,7 +23,8 @@ actual fun EchoFile.readPrefix(count: Int): ByteArray = runCatching {
  */
 actual fun EchoFile.sha256Hex(chunkSize: Int): String? = runCatching {
     val streaming = Sha256.Streaming()
-    RandomAccessFile(this, "r").use { raf ->
+    RandomAccessFile(absolutePath, "r").use { raf ->
+        require(chunkSize > 0) { "chunkSize must be positive" }
         val buffer = ByteArray(chunkSize)
         var remaining = raf.length()
         while (remaining > 0) {

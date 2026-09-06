@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.*
+import dev.brahmkshatriya.echo.player.core.recovery.AudioSessionRecovery
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionInterruptionNotification
 import platform.AVFAudio.AVAudioSessionRouteChangeNotification
@@ -67,15 +68,14 @@ class IosAudioPlayer(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var player: AVPlayer? = null
-    private var timeObserverToken: Any? = null
     private val notificationObservers = mutableListOf<NSObjectProtocol>()
-    private val remoteCommandTargets = mutableListOf<Any>()
+    private val remoteCommandTargets = mutableListOf<Pair<MPRemoteCommand, Any>>()
+    private val sessionRecovery = AudioSessionRecovery()
 
     private var currentRequest: EngineRequest? = null
     private var metadata: NowPlayingInfo? = null
     private var artworkImage: UIImage? = null
     private var artworkJob: Job? = null
-    private var wasPlayingBeforeInterruption = false
     private var volume: Float = 1f
     private var speed: Float = 1f
 
@@ -84,7 +84,14 @@ class IosAudioPlayer(
         observeInterruptions()
         observeRouteChanges()
         observeItemEnd()
+        observeMediaServices()
         setupRemoteCommands()
+        scope.launch {
+            while (true) {
+                delay(if (sessionRecovery.wantsPlayback) 500L else 2_000L)
+                publishTick()
+            }
+        }
     }
 
     // ---------------------------------------------------------- audio session
@@ -97,12 +104,14 @@ class IosAudioPlayer(
         }
     }
 
-    private fun activateAudioSession() {
+    private fun activateAudioSession(): Boolean {
         val session = AVAudioSession.sharedInstance()
         val success = session.setActive(true, null)
         if (!success) {
             logger.warn(TAG, "AVAudioSession activation error: failed to activate session")
+            updateState { it.copy(isPlaying = false, error = "Audio output is unavailable. Try playing again.") }
         }
+        return success
     }
 
     private fun observeInterruptions() {
@@ -113,20 +122,14 @@ class IosAudioPlayer(
         ) { notification ->
             val userInfo = notification?.userInfo
             // userInfo key literals are the stable public ABI constants
-            val type = (userInfo?.get("AVAudioSessionInterruptionType") as? NSNumber)?.longValue
+            val type = (userInfo?.get(AVAudioSessionInterruptionTypeKey) as? NSNumber)?.longValue
             when (type) {
                 INTERRUPTION_TYPE_BEGAN -> {
-                    wasPlayingBeforeInterruption = engineState.value.isPlaying
-                    player?.pause()
-                    updateState { it.copy(isPlaying = false) }
-                    pushNowPlaying()
+                    applySessionAction(sessionRecovery.interruptionBegan())
                 }
                 INTERRUPTION_TYPE_ENDED -> {
-                    val options = (userInfo?.get("AVAudioSessionInterruptionOption") as? NSNumber)?.longValue ?: 0
-                    if (options and INTERRUPTION_OPTION_SHOULD_RESUME != 0L && wasPlayingBeforeInterruption) {
-                        activateAudioSession()
-                        play()
-                    }
+                    val options = (userInfo?.get(AVAudioSessionInterruptionOptionKey) as? NSNumber)?.longValue ?: 0
+                    applySessionAction(sessionRecovery.interruptionEnded(options and INTERRUPTION_OPTION_SHOULD_RESUME != 0L))
                 }
             }
         }
@@ -138,15 +141,10 @@ class IosAudioPlayer(
             `object` = null,
             queue = NSOperationQueue.mainQueue()
         ) { notification ->
-            val reason = (notification?.userInfo?.get("AVAudioSessionRouteChangeReason") as? NSNumber)?.longValue
+            val reason = (notification?.userInfo?.get(AVAudioSessionRouteChangeReasonKey) as? NSNumber)?.longValue
             if (reason == ROUTE_REASON_OLD_DEVICE_UNAVAILABLE) {
                 // Headphones/Bluetooth disconnected
-                if (pauseOnRouteLoss()) {
-                    player?.pause()
-                    updateState { it.copy(isPlaying = false) }
-                    pushNowPlaying()
-                    logger.info(TAG, "Playback paused after audio route loss")
-                }
+                applySessionAction(sessionRecovery.routeLost(pauseOnRouteLoss()))
             }
         }
     }
@@ -156,37 +154,70 @@ class IosAudioPlayer(
             name = AVPlayerItemDidPlayToEndTimeNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue()
-        ) { _ ->
-            _ended.tryEmit(Unit)
+        ) { notification ->
+            if (notification?.`object` == player?.currentItem && player?.currentItem != null) {
+                updateState { it.copy(isPlaying = false, isBuffering = false) }
+                _ended.tryEmit(Unit)
+            }
         }
+        notificationObservers += NSNotificationCenter.defaultCenter().addObserverForName(
+            AVPlayerItemFailedToPlayToEndTimeNotification, null, NSOperationQueue.mainQueue()
+        ) { notification ->
+            if (notification?.`object` == player?.currentItem && player?.currentItem != null) {
+                updateState { it.copy(isPlaying = false, isBuffering = false, error = "Playback failed. Try playing again.") }
+            }
+        }
+    }
+
+    private fun observeMediaServices() {
+        val center = NSNotificationCenter.defaultCenter()
+        notificationObservers += center.addObserverForName(
+            AVAudioSessionMediaServicesWereLostNotification, null, NSOperationQueue.mainQueue()
+        ) { applySessionAction(sessionRecovery.servicesLost()) }
+        notificationObservers += center.addObserverForName(
+            AVAudioSessionMediaServicesWereResetNotification, null, NSOperationQueue.mainQueue()
+        ) { applySessionAction(sessionRecovery.servicesReset()) }
+    }
+
+    private fun applySessionAction(action: AudioSessionRecovery.Action) {
+        when (action) {
+            AudioSessionRecovery.Action.PAUSE -> player?.pause()
+            AudioSessionRecovery.Action.RESUME -> resumePlayer()
+            AudioSessionRecovery.Action.REBUILD_PAUSED,
+            AudioSessionRecovery.Action.REBUILD_AND_RESUME -> {
+                val saved = currentRequest?.copy(startPositionMs = engineState.value.positionMs)
+                if (saved != null) {
+                    prepare(saved)
+                    if (action == AudioSessionRecovery.Action.REBUILD_AND_RESUME) resumePlayer()
+                } else configureAudioSession()
+            }
+            AudioSessionRecovery.Action.NONE -> Unit
+        }
+        updateState { it.copy(
+            isPlaying = if (action == AudioSessionRecovery.Action.PAUSE) false else it.isPlaying,
+            playWhenReady = sessionRecovery.wantsPlayback,
+            suppressed = sessionRecovery.interrupted || !sessionRecovery.servicesAvailable
+        ) }
+        pushNowPlaying()
     }
 
     // ---------------------------------------------------------- engine API
 
     override fun prepare(request: EngineRequest) {
-        scope.launch {
-            currentRequest = request
-            configureAudioSession()
-            detachPlayerInternals()
-            try {
-                val item = buildItem(request)
-                val newPlayer = AVPlayer(playerItem = item)
-                newPlayer.volume = volume
-                newPlayer.actionAtItemEnd = AVPlayerActionAtItemEndPause
-                player = newPlayer
-                attachTimeObserver(newPlayer)
-                engineState.value = EngineState(
-                    positionMs = request.startPositionMs,
-                    speed = speed
-                )
-                if (request.startPositionMs > 0) {
-                    newPlayer.seekToTime(CMTimeMakeWithSeconds(request.startPositionMs / 1000.0, 600))
-                }
-            } catch (e: Throwable) {
-                val error = EchoError.Playback("Could not prepare playback: ${e.message}")
-                logger.error(TAG, error.userMessage, e)
-                engineState.value = EngineState()
-            }
+        // The controller calls prepare -> play synchronously on the main thread.
+        // Scheduling prepare in another coroutine loses that play command.
+        currentRequest = request
+        configureAudioSession()
+        detachPlayerInternals()
+        val item = buildItem(request)
+        val newPlayer = AVPlayer(playerItem = item)
+        newPlayer.volume = volume
+        newPlayer.actionAtItemEnd = AVPlayerActionAtItemEndPause
+        newPlayer.allowsExternalPlayback = true
+        player = newPlayer
+        engineState.value = EngineState(positionMs = request.startPositionMs.coerceAtLeast(0), speed = speed)
+        if (request.startPositionMs > 0) {
+            newPlayer.seekToTime(CMTimeMakeWithSeconds(request.startPositionMs / 1000.0, 600))
         }
     }
 
@@ -202,98 +233,98 @@ class IosAudioPlayer(
         }
     }
 
-    override fun play() {
+    override fun play() = applySessionAction(sessionRecovery.play())
+
+    private fun resumePlayer() {
         val current = player ?: return
-        activateAudioSession()
-        current.play()
-        if (speed != 1f) current.rate = speed
-        updateState { it.copy(isPlaying = true) }
-        pushNowPlaying()
+        if (!activateAudioSession()) return
+        current.playImmediatelyAtRate(speed)
+        updateState { it.copy(playWhenReady = true, error = null) }
     }
 
-    override fun pause() {
-        val current = player ?: return
-        current.pause()
-        updateState { it.copy(isPlaying = false) }
-        pushNowPlaying()
-    }
+    override fun pause() = applySessionAction(sessionRecovery.pause())
 
     override fun stop() {
-        player?.pause()
-        player?.replaceCurrentItemWithPlayerItem(null)
+        sessionRecovery.pause()
         detachPlayerInternals()
+        currentRequest = null
+        metadata = null
+        artworkJob?.cancel()
+        artworkImage = null
         engineState.value = EngineState(speed = speed)
+        pushNowPlaying()
+        updateRemoteAvailability()
     }
 
     override fun seekTo(positionMs: Long) {
         val current = player ?: return
-        val time = CMTimeMakeWithSeconds(positionMs / 1000.0, 600)
+        val clamped = positionMs.coerceAtLeast(0)
+        val time = CMTimeMakeWithSeconds(clamped / 1000.0, 600)
         current.seekToTime(time)
-        updateState { it.copy(positionMs = positionMs) }
+        updateState { it.copy(positionMs = clamped) }
         pushNowPlaying()
     }
 
     override fun setVolume(volume: Float) {
-        this.volume = volume.coerceIn(0f, 1f)
+        this.volume = volume.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
         player?.volume = this.volume
     }
 
     override fun setPlaybackSpeed(speed: Float) {
-        this.speed = speed.coerceIn(0.25f, 3f)
+        this.speed = speed.takeIf { it.isFinite() }?.coerceIn(0.25f, 3f) ?: 1f
         if (engineState.value.isPlaying) player?.rate = this.speed
         updateState { it.copy(speed = this.speed) }
     }
 
     override fun setNowPlayingInfo(info: NowPlayingInfo) {
+        val previous = metadata
+        val changed = previous?.artworkRequestUrl != info.artworkRequestUrl || previous?.artworkHeaders != info.artworkHeaders
         metadata = info
-        if (artworkImage != null && info.artworkRequestUrl == null) artworkImage = null
-        artworkJob?.cancel()
-        val artworkUrl = info.artworkRequestUrl
-        val fetcher = artworkFetcher
-        if (artworkUrl != null && fetcher != null) {
+        if (changed) {
+            artworkJob?.cancel()
             artworkImage = null
-            artworkJob = scope.launch {
-                val bytes = runCatching { fetcher(artworkUrl, info.artworkHeaders) }.getOrNull()
-                if (bytes != null && metadata?.id == info.id) {
-                    artworkImage = bytes.toUIImage()
-                    pushNowPlaying()
+            val artworkUrl = info.artworkRequestUrl
+            val fetcher = artworkFetcher
+            if (artworkUrl != null && fetcher != null) {
+                artworkJob = scope.launch {
+                    val bytes = try { fetcher(artworkUrl, info.artworkHeaders) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (failure: Exception) { null }
+                    if (bytes != null && metadata?.artworkRequestUrl == artworkUrl) {
+                        artworkImage = bytes.toUIImage()
+                        pushNowPlaying()
+                    }
                 }
             }
         }
+        updateRemoteAvailability()
         pushNowPlaying()
     }
 
     override fun setRemoteCommandListener(listener: RemoteCommandListener?) {
         remoteListener = listener
+        updateRemoteAvailability()
     }
 
     private var remoteListener: RemoteCommandListener? = null
 
     override fun release() {
-        detachPlayerInternals()
-        player?.replaceCurrentItemWithPlayerItem(null)
-        player = null
+        stop()
         val center = NSNotificationCenter.defaultCenter()
         notificationObservers.forEach { center.removeObserver(it) }
         notificationObservers.clear()
         unregisterRemoteCommands()
+        remoteListener = null
+        AVAudioSession.sharedInstance().setActive(false, null)
         scope.cancel()
     }
 
     // ---------------------------------------------------------- internals
 
-    private fun attachTimeObserver(current: AVPlayer) {
-        timeObserverToken = current.addPeriodicTimeObserverForInterval(
-            interval = CMTimeMake(value = 1, timescale = 2),
-            queue = null
-        ) { _: kotlinx.cinterop.CValue<platform.CoreMedia.CMTime> ->
-            scope.launch { publishTick() }
-        }
-    }
-
     private fun detachPlayerInternals() {
-        timeObserverToken?.let { token -> player?.removeTimeObserver(token) }
-        timeObserverToken = null
+        player?.pause()
+        player?.replaceCurrentItemWithPlayerItem(null)
+        player = null
     }
 
     private fun publishTick() {
@@ -312,7 +343,10 @@ class IosAudioPlayer(
                 else secondsToMs(durationSeconds),
                 bufferedMs = secondsToMs(bufferedSeconds),
                 isPlaying = current.timeControlStatus == AVPlayerTimeControlStatusPlaying,
-                isBuffering = isBuffering
+                isBuffering = isBuffering,
+                playWhenReady = sessionRecovery.wantsPlayback,
+                suppressed = sessionRecovery.interrupted || !sessionRecovery.servicesAvailable,
+                error = if (item.status == AVPlayerItemStatusFailed) "Playback failed. Try playing again." else it.error
             )
         }
         // Keep the lock screen clock in sync while playing
@@ -326,7 +360,7 @@ class IosAudioPlayer(
         }
 
     private fun secondsToMs(seconds: Double): Long =
-        if (seconds.isNaN() || seconds < 0) 0 else (seconds * 1000).toLong()
+        if (!seconds.isFinite() || seconds < 0) 0 else (seconds * 1000).toLong()
 
     private fun updateState(block: (EngineState) -> EngineState) {
         engineState.value = block(engineState.value)
@@ -350,8 +384,10 @@ class IosAudioPlayer(
         val map = mutableMapOf<Any?, Any?>(
             MPMediaItemPropertyTitle to info.title,
             MPMediaItemPropertyArtist to info.artist,
-            MPMediaItemPropertyPlaybackDuration to (state.durationMs / 1000.0),
-            MPNowPlayingInfoPropertyElapsedPlaybackTime to (state.positionMs / 1000.0),
+            MPMediaItemPropertyPlaybackDuration to ((state.durationMs.takeIf { it > 0 } ?: info.durationMs) / 1000.0),
+            MPNowPlayingInfoPropertyElapsedPlaybackTime to ((if (currentRequest == null) info.positionMs else state.positionMs) / 1000.0),
+            MPNowPlayingInfoPropertyPlaybackQueueIndex to info.queueIndex,
+            MPNowPlayingInfoPropertyPlaybackQueueCount to info.queueCount,
             MPNowPlayingInfoPropertyPlaybackRate to (if (state.isPlaying) state.speed.toDouble() else 0.0)
         )
         info.album?.let { map[MPMediaItemPropertyAlbumTitle] = it }
@@ -365,45 +401,55 @@ class IosAudioPlayer(
 
     // ---------------------------------------------------------- remote commands
 
+    private fun updateRemoteAvailability() {
+        val center = MPRemoteCommandCenter.sharedCommandCenter()
+        val available = metadata != null && remoteListener != null
+        center.playCommand.enabled = available
+        center.pauseCommand.enabled = available
+        center.togglePlayPauseCommand.enabled = available
+        center.nextTrackCommand.enabled = available && metadata?.canGoNext == true
+        center.previousTrackCommand.enabled = available && metadata?.canGoPrevious == true
+        center.skipForwardCommand.enabled = available
+        center.skipBackwardCommand.enabled = available
+        center.changePlaybackPositionCommand.enabled = available
+    }
+
     private fun setupRemoteCommands() {
         val center = MPRemoteCommandCenter.sharedCommandCenter()
-
-        fun add(command: MPRemoteCommand, handler: () -> Unit) {
-            remoteCommandTargets += command.addTargetWithHandler { _ ->
-                handler()
-                MPRemoteCommandHandlerStatusSuccess
+        fun add(command: MPRemoteCommand, handler: (RemoteCommandListener) -> Unit) {
+            val target = command.addTargetWithHandler {
+                val listener = remoteListener
+                if (listener == null || metadata == null) MPRemoteCommandHandlerStatusCommandFailed
+                else { handler(listener); MPRemoteCommandHandlerStatusSuccess }
             }
+            remoteCommandTargets += command to target
         }
-
-        add(center.playCommand) { val listener = remoteListener; if (listener != null) listener.onPlay() else play() }
-        add(center.pauseCommand) { val listener = remoteListener; if (listener != null) listener.onPause() else pause() }
-        add(center.togglePlayPauseCommand) { remoteListener?.onTogglePlayPause() }
-        add(center.nextTrackCommand) { remoteListener?.onNext() }
-        add(center.previousTrackCommand) { remoteListener?.onPrevious() }
-        add(center.skipForwardCommand) { remoteListener?.onSkipForward() }
-        add(center.skipBackwardCommand) { remoteListener?.onSkipBackward() }
+        add(center.playCommand) { it.onPlay() }
+        add(center.pauseCommand) { it.onPause() }
+        add(center.togglePlayPauseCommand) { it.onTogglePlayPause() }
+        add(center.nextTrackCommand) { it.onNext() }
+        add(center.previousTrackCommand) { it.onPrevious() }
+        add(center.skipForwardCommand) { it.onSkipForward() }
+        add(center.skipBackwardCommand) { it.onSkipBackward() }
         center.skipForwardCommand.preferredIntervals = listOf(30.0)
         center.skipBackwardCommand.preferredIntervals = listOf(30.0)
-
-        remoteCommandTargets += center.changePlaybackPositionCommand.addTargetWithHandler { event ->
-            val positionEvent = event as? MPChangePlaybackPositionCommandEvent
-            if (positionEvent != null) {
-                remoteListener?.onSeekTo((positionEvent.positionTime * 1000).toLong())
-                MPRemoteCommandHandlerStatusSuccess
-            } else {
+        val command = center.changePlaybackPositionCommand
+        val target = command.addTargetWithHandler { event ->
+            val position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
+            val listener = remoteListener
+            if (position == null || !position.isFinite() || position < 0 || listener == null || metadata == null) {
                 MPRemoteCommandHandlerStatusCommandFailed
+            } else {
+                listener.onSeekTo((position * 1000).toLong())
+                MPRemoteCommandHandlerStatusSuccess
             }
         }
+        remoteCommandTargets += command to target
+        updateRemoteAvailability()
     }
 
     private fun unregisterRemoteCommands() {
-        val center = MPRemoteCommandCenter.sharedCommandCenter()
-        listOf(
-            center.playCommand, center.pauseCommand, center.togglePlayPauseCommand,
-            center.nextTrackCommand, center.previousTrackCommand,
-            center.skipForwardCommand, center.skipBackwardCommand,
-            center.changePlaybackPositionCommand
-        ).zip(remoteCommandTargets) { command, target -> command.removeTarget(target) }
+        remoteCommandTargets.forEach { (command, target) -> command.removeTarget(target) }
         remoteCommandTargets.clear()
     }
 }
