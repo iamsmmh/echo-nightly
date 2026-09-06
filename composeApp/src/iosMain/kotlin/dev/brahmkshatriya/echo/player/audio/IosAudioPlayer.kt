@@ -27,6 +27,7 @@ import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionInterruptionNotification
 import platform.AVFAudio.AVAudioSessionRouteChangeNotification
+import platform.AVFAudio.setActive
 import platform.AVFoundation.*
 import platform.CoreGraphics.*
 import platform.CoreMedia.*
