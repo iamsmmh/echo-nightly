@@ -11,7 +11,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonClassDiscriminator
-import java.io.InputStream
+import dev.brahmkshatriya.echo.common.helpers.EchoByteStream
 
 /**
  * A data class representing an unloaded streamable item that is used when playing a [Track]
@@ -217,7 +217,7 @@ data class Streamable(
         /**
          * A data class representing a source that contains Audio/Video in a Byte Stream.
          *
-         * @property streamProvider A function that provides an [InputStream] from a given position.
+         * @property streamProvider A function that provides an [EchoByteStream] from a given position.
          *
          * @see InputProvider
          */
@@ -253,20 +253,20 @@ data class Streamable(
     }
 
     /**
-     * An interface that provides an [InputStream] from a given position.
+     * An interface that provides an [EchoByteStream] from a given position.
      *
      * This is used for [Streamable.Source.Raw] to provide the stream data.
      */
     fun interface InputProvider {
 
         /**
-         * Provides an [InputStream] from a given position.
+         * Provides an [EchoByteStream] from a given position.
          *
          * @param position The position to start reading from, 0 if the stream should start from the beginning
          * @param length The total bytes that should be the end of the stream, -1 if unknown. Important for seeking.
-         * @return An [InputStream] from the given position and the total bytes that can be read, or -1 if unknown.
+         * @return An [EchoByteStream] from the given position and the total bytes that can be read, or -1 if unknown.
          */
-        suspend fun provide(position: Long, length: Long): Pair<InputStream, Long>
+        suspend fun provide(position: Long, length: Long): Pair<EchoByteStream, Long>
     }
 
     companion object {

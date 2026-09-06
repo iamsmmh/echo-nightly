@@ -5,7 +5,7 @@ import dev.brahmkshatriya.echo.common.models.EchoMediaItem
 import dev.brahmkshatriya.echo.common.models.Progress
 import dev.brahmkshatriya.echo.common.models.Streamable
 import kotlinx.coroutines.flow.MutableStateFlow
-import java.io.File
+import dev.brahmkshatriya.echo.common.models.EchoFile
 
 /**
  * The client for downloading tracks. Needs to support the following:
@@ -79,7 +79,7 @@ interface DownloadClient : ExtensionClient {
         progressFlow: MutableStateFlow<Progress>,
         context: DownloadContext,
         source: Streamable.Source
-    ): File
+    ): EchoFile
 
     /**
      * Merge the given media [files] into a single file.
@@ -92,8 +92,8 @@ interface DownloadClient : ExtensionClient {
     suspend fun merge(
         progressFlow: MutableStateFlow<Progress>,
         context: DownloadContext,
-        files: List<File>
-    ): File
+        files: List<EchoFile>
+    ): EchoFile
 
     /**
      * Tag a file with the given track metadata
@@ -108,6 +108,6 @@ interface DownloadClient : ExtensionClient {
     suspend fun tag(
         progressFlow: MutableStateFlow<Progress>,
         context: DownloadContext,
-        file: File
-    ): File
+        file: EchoFile
+    ): EchoFile
 }

@@ -6,6 +6,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import dev.brahmkshatriya.echo.common.helpers.provideAsInputStream
 import dev.brahmkshatriya.echo.common.models.Streamable
 import kotlinx.coroutines.runBlocking
 import java.io.InputStream
@@ -23,7 +24,7 @@ class RawDataSource : BaseDataSource(true) {
     override fun open(dataSpec: DataSpec): Long {
         val streamable = dataSpec.customData as Streamable.Source.Raw
         val (source, total) = runBlocking {
-            streamable.streamProvider!!.provide(dataSpec.position, dataSpec.length)
+            streamable.streamProvider!!.provideAsInputStream(dataSpec.position, dataSpec.length)
         }
         uri = dataSpec.uri
         stream = source

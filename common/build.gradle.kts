@@ -24,14 +24,40 @@ kotlin {
     }
     jvm()
 
+    // Apple targets so the extension API and models can be consumed by the
+    // Compose Multiplatform iOS application.
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
     sourceSets {
         commonMain {
             dependencies {
                 api(libs.bundles.kotlinx)
+                api(libs.kotlinx.datetime)
+            }
+        }
+
+        // `jvmCommon` is a shared directory (not a hierarchical source set) that is
+        // compiled into both the Android and JVM targets. It keeps the JVM-only
+        // extension helpers (okhttp bridges, java.io.File based APIs) source
+        // compatible for existing Echo extensions while staying out of iOS builds.
+        val jvmCommonDir = "src/jvmCommon/kotlin"
+        val androidMain by getting {
+            kotlin.srcDir(jvmCommonDir)
+            dependencies {
                 api(libs.okhttp)
                 api(libs.protobuf.java)
             }
         }
+        val jvmMain by getting {
+            kotlin.srcDir(jvmCommonDir)
+            dependencies {
+                api(libs.okhttp)
+                api(libs.protobuf.java)
+            }
+        }
+        val iosMain by getting
     }
 }
 

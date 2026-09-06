@@ -1,7 +1,7 @@
 package dev.brahmkshatriya.echo.common.clients
 
 import dev.brahmkshatriya.echo.common.models.Playlist
-import java.io.File
+import dev.brahmkshatriya.echo.common.models.EchoFile
 
 /**
  * Used to allow editing the cover of a playlist.
@@ -16,5 +16,5 @@ interface PlaylistEditCoverClient : PlaylistEditClient {
      * @param playlist the playlist to edit the cover of.
      * @param cover the new cover of the playlist, or null if user removed the cover.
      */
-    suspend fun editPlaylistCover(playlist: Playlist, cover: File?)
+    suspend fun editPlaylistCover(playlist: Playlist, cover: EchoFile?)
 }
