@@ -94,7 +94,7 @@ class IosAudioPlayer(
 
     private fun configureAudioSession() {
         val session = AVAudioSession.sharedInstance()
-        val categorySuccess = session.setCategory(AVAudioSessionCategoryPlayback, error = null)
+        val categorySuccess = session.setCategory(AVAudioSessionCategoryPlayback, null)
         if (!categorySuccess) {
             logger.error(TAG, "AVAudioSession category error: failed to set playback category")
         }
@@ -102,7 +102,7 @@ class IosAudioPlayer(
 
     private fun activateAudioSession() {
         val session = AVAudioSession.sharedInstance()
-        val success = session.setActive(true, error = null)
+        val success = session.setActive(true, null)
         if (!success) {
             logger.warn(TAG, "AVAudioSession activation error: failed to activate session")
         }
