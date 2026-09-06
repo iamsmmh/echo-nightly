@@ -1,21 +1,25 @@
 Base: 6fe7d015f7872814759071de86eed2227b4c0639
-Code checkpoint: ca1b4a6523570c8842543e4955a1f5c3d9371402
-A=added, M=modified, D=deleted
+Validated code checkpoint: c28037db79b0a9ded8162b99b796b7b4387b15de
+Validation: https://github.com/iamsmmh/echo-nightly/actions/runs/34053416548 (all jobs passed)
+127 changed files; A=added, M=modified, D=deleted
 
 A	.github/workflows/production-readiness.yml
 M	.gitignore
 M	app-android/build.gradle.kts
 A	app-android/src/androidTest/kotlin/dev/brahmkshatriya/echo/playback/cast/CastRoutingPlayerTest.kt
 A	app-android/src/androidTest/kotlin/dev/brahmkshatriya/echo/security/AndroidSecureStorageTest.kt
+A	app-android/src/androidTest/kotlin/dev/brahmkshatriya/echo/ui/AppLaunchTest.kt
 M	app-android/src/main/AndroidManifest.xml
 M	app-android/src/main/java/dev/brahmkshatriya/echo/download/DownloadWorker.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/AndroidAutoCallback.kt
+M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/PlaybackWatchdog.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/PlayerService.kt
 A	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/CastRoutingPlayer.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/ChromecastBridge.kt
 A	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/EchoCastMediaItemConverter.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/EchoCastOptionsProvider.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/listener/PlayerRadio.kt
+M	app-android/src/main/java/dev/brahmkshatriya/echo/ui/common/FragmentUtils.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/CacheUtils.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/CoroutineUtils.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/FileIntegrity.kt
@@ -23,6 +27,7 @@ M	app-android/src/main/java/dev/brahmkshatriya/echo/wear/EchoWearListenerService
 M	app-android/src/main/java/dev/brahmkshatriya/echo/wear/WearBridge.kt
 A	app-android/src/main/res/xml/backup_rules.xml
 A	app-android/src/main/res/xml/data_extraction_rules.xml
+A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/playback/PlaybackWatchdogTest.kt
 A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/CacheEnvelopeTest.kt
 A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/CoroutineFutureTest.kt
 A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/FileIntegrityTest.kt

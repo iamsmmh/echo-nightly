@@ -116,81 +116,65 @@ remaining gaps are disclosed below, in accordance with `AI_POLICY.md`.
    accepted as completed media. Segmented downloads and durable iOS background
    resume data are not yet implemented.
 7. The extension ABI was preserved; internal refactors are not permission to
-   change the frozen `common` contract. No new release tag/version or signed
-   distributable has been issued by this work.
+   change the frozen `common` contract. No new release tag/version or production-signed
+   distributable has been issued; CI debug APKs are not production release artifacts.
 
 ## Build and test evidence
 
-Evidence is published by `.github/workflows/production-readiness.yml` as GitHub
-check annotations and build artifacts, not committed build logs. The workflow
-requires architecture, shared JVM, Android/Wear compilation, Android unit and
-emulator tests, three iOS compilations, native tests and app-hosted XCTest.
-Missing test output, failures and skips do not count as a pass.
+Code checkpoint: **`c28037d`**. Latest run:
+[34053416548](https://github.com/iamsmmh/echo-nightly/actions/runs/34053416548).
+**Every job in this configured workflow passed, including the final build gate.**
+This validates the listed debug/native/test tasks, not completion of all requested
+features or the still-missing release, lint, security and coverage gates.
 
-| Commit / run | Verified outcome |
+| Lane | Evidence |
 |---|---|
-| `acc867e` / [34041083865](https://github.com/iamsmmh/echo-nightly/actions/runs/34041083865) | Architecture passed; **145 JVM tests passed**. Three iOS Kotlin targets compiled. Native tests reached 122 passes but a JVM-only fixture did not compile. Android failed on legacy source/API errors. |
-| `2cd419c` / [34041886688](https://github.com/iamsmmh/echo-nightly/actions/runs/34041886688) | **169 JVM tests passed**. Three iOS Kotlin targets compiled and the **host build/XCTest step passed**. Native run: 170 tests, one Keychain test failure in the standalone runner (`errSecNotAvailable`); that integration test is moved, not skipped, into app-hosted XCTest. Android failed on Cast APIs. |
-| `d4aea3a` / [34043006014](https://github.com/iamsmmh/echo-nightly/actions/runs/34043006014) | Architecture, **173 JVM tests and 173 iOS native tests passed**. All three native targets compiled. Android found six legacy utility/radio compile errors; XCTest compilation found three `remove(key_:)` argument-label errors. Device tests were blocked by Android compilation. Corrections are in the next increment. |
+| Architecture/static/YAML | Passed; 0 architecture violations and 25 Python verification tests. |
+| Shared JVM | 173 tests passed, 0 failures/errors/skips. |
+| Android/Wear/shared UI | Debug application builds and shared UI compilation passed; 10 Android unit tests passed. |
+| Android emulator | 4 tests passed: real Keystore/migration, routed-player stale-work rejection, real launcher lifecycle, and deep-link intent preservation. |
+| iOS | iOS Arm64, simulator Arm64 and x64 compilation passed; 173 native tests and all 5 app-hosted XCTest tests passed, including the real Keychain checks on iOS 26.2. |
+| Startup probe | Five valid Android debug/emulator process-cold first-frame samples; median 2,808 ms, p95 2,852 ms. The collection succeeded; the 2-second performance target is not met by this baseline. |
+| Aggregate build gate | Passed; architecture, shared, Android, Android-device and iOS jobs all succeeded. |
 
-At `0065a89` / [34047283442](https://github.com/iamsmmh/echo-nightly/actions/runs/34047283442),
-Android/Wear/shared UI compilation and **8 Android unit tests passed**; **2 Android
-emulator tests passed**, exercising the real Keystore and Cast queue routing.
-JVM and native suites each passed **173 tests**. XCTest ran **5 tests: 4 passed,
-1 failed**. The app-hosted test exposed a real Keychain CFBoolean-bridging error
-(`errSecParam`, -50), rather than a permissions failure. A native CFDictionary
-implementation corrects the representation in the next increment. The separate
-startup probe also failed without sufficient diagnostics; it now installs the
-exact APK and publishes its failures through the CI diagnostic wrapper.
+The Android routed-player test uses Media3 engines, **not a physical Cast receiver**.
+The iOS host suite exercises the actual Keychain, not an in-memory substitute.
+The workflow retains JUnit/XML, XCTest result bundles, APKs and diagnostic/benchmark
+artifacts. Missing results, failures and skips are not treated as passing tests.
 
-At `7005b3a` / [34048028030](https://github.com/iamsmmh/echo-nightly/actions/runs/34048028030),
-compilation and the 173 JVM / 173 native / 8 Android / 2 emulator tests passed.
-The app-hosted run could not launch its simulator (0 XCTest passes), so the
-Keychain correction is not yet runtime-verified. CI now boots a separate,
-isolated simulator after the standalone tests. The startup probe correctly
-refused a zero-time permission-controller result; subsequent probes pre-grant
-runtime permissions and require both a cold launch and Echo's own activity.
+Important regressions exposed and corrected during CI:
 
-At `ca1b4a6` / [34049189038](https://github.com/iamsmmh/echo-nightly/actions/runs/34049189038),
-the **entire iOS lane passed**: all three targets compiled, 173 native tests
-passed, and **all 5 app-hosted XCTest tests passed**, including Keychain
-round-trip/update/delete/isolation on the iOS 26.2 simulator. Android/Wear/shared
-UI compilation, 8 Android unit tests and 2 emulator tests also passed. The
-startup probe still reported an unknown launch state without a first-frame
-time; those are not accepted as measurements. A launcher lifecycle test and
-crash/activity-log capture are added to distinguish a real startup problem from
-measurement setup.
+- Source/API errors in Android Auto, downloads, Cast, Wear and iOS platform bindings.
+- A cache-tampering fixture that did not actually alter the serialized payload.
+- Keychain query Boolean boxing (`errSecParam`); native CF dictionaries now retain
+  the correct CFBoolean type. The real Keychain test moved from the unsupported
+  standalone runner into app-hosted XCTest and subsequently passed.
+- Android's watchdog reading ExoPlayer on an IO thread, causing a process crash;
+  main-looper access, monotonic time and real progress sampling now have regressions.
+- Deep-link handling nulling the activity's launch intent; payload consumption now
+  preserves framework launch identity and the original incoming request.
+- Startup probes that accidentally measured permission dialogs or missing frames;
+  those were rejected, not recorded as zero-millisecond successes.
 
-At `3e48b54` / [34049958363](https://github.com/iamsmmh/echo-nightly/actions/runs/34049958363),
-Android compilation/unit tests and the entire iOS lane passed again. The new
-Android launcher test exposed a real process crash: `PlaybackWatchdog.tick`
-read ExoPlayer on `Dispatchers.IO`. The device run recorded **3 tests, 1 failure**;
-this explains why valid startup timings were missing. The watchdog is corrected
-to use the main player looper, with additional pause/buffering/progress rules
-covered by regression tests. The launcher test remains enabled.
+Supporting earlier evidence: [ca1b4a6 / 34049189038](https://github.com/iamsmmh/echo-nightly/actions/runs/34049189038)
+passed the full iOS lane (173 native + 5 XCTest, including Keychain on iOS 26.2).
+[3e48b54 / 34049958363](https://github.com/iamsmmh/echo-nightly/actions/runs/34049958363)
+exposed the watchdog startup crash with the real Android launcher test.
 
-The subsequent lifecycle diagnostics confirmed that the launcher reached
-`RESUMED`; the deep-link handler had set `Activity.intent` to null, breaking
-AndroidX launch tracking. It now preserves the intent's action/component/flags
-while clearing consumed payloads, with an additional regression test ensuring
-the original incoming request is not mutated.
-
-Local static/YAML checks passed. The Python verification suite has **25 executed passing tests**, including
-benchmark-evidence validation. The first-frame probe is wired to the Android
-emulator lane; a result is not asserted until it has actually run. Local Kotlin/Android builds are unavailable:
-Gradle distribution access is blocked and the sandbox lacks the Android SDK/full
-JDK. Remote CI is the source of platform compilation/test evidence.
+Local static/YAML checks and all **25 Python verification tests passed**. Local
+Kotlin/Android builds are unavailable: Gradle distribution access is blocked and
+the sandbox lacks the Android SDK/full JDK. Remote CI is the platform-build evidence.
 
 **Coverage has not been measured.** Test counts are not coverage percentages.
 The requested unit 90%, integration 85%, UI 80% and overall 85% thresholds remain
-unproven. Native compilation and simulator tests do not prove Bluetooth,
-headset, background audio, casting, power-use or physical-device behavior.
+unproven. These debug/simulator lanes do not establish release builds, physical
+device behavior, Bluetooth/headset/background reliability, casting or power use.
 
 ## Performance evidence
 
 | Requirement | Current evidence |
 |---|---|
-| Android cold start <2 s | Not yet measured on a release build/device. A process-cold debug/emulator first-frame probe is being added; it is not hardware or fully-interactive certification. |
+| Android cold start <2 s | **Median 2,808 ms; p95 2,852 ms**, n=5 on an API 35 x86_64 debug emulator. Above the requested budget in this probe; release/device and fully-interactive startup remain unmeasured. |
 | iOS cold start <2 s | Not measured. |
 | Search <150 ms | Not measured; aggregation can wait for remote providers. |
 | Library open <300 ms | Not measured. |
@@ -223,7 +207,7 @@ without evidence.
 | Telemetry | Explicit opt-in local buffering/export/upload policy; the default-false setting alone is not an implementation. |
 | Performance | Release/device traces, cold-start/search/library/queue benchmarks, paging/caching profiles and regressions. |
 | WearOS | Standalone offline playback/library/queue/download/artwork sync and battery validation; current app remains principally a remote control. |
-| UI | Full tablet/foldable/landscape, animations, accessibility and UI regression coverage. |
+| UI | Full tablet/foldable/landscape, animations, accessibility and UI regression coverage; shared-feature parity wiring into the legacy Android View UI. |
 | Release engineering | Blocking release/lint/detekt/security/SBOM/coverage gates, minified-build extension-ABI checks, signed APK/AAB/IPA/Wear artifacts, semantic version/changelog automation and upgrade qualification. |
 
 A remaining legacy marker exists in Android `AudioFocusListener` for playback
