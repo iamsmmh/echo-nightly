@@ -86,9 +86,19 @@ object FragmentUtils {
         onIntent(uiViewModel, intent)
     }
 
+    internal fun consumedLaunchIntent(source: Intent): Intent = Intent(source).apply {
+        // Keep the framework/ActivityScenario launch identity, but do not replay
+        // a notification, download action or deep link after recreation.
+        data = null
+        clipData = null
+        removeExtra("fromNotification")
+        removeExtra("fromDownload")
+        removeExtra("webViewRequest")
+    }
+
     private fun FragmentActivity.onIntent(uiViewModel: UiViewModel, intent: Intent?) {
-        this.intent = null
         intent ?: return
+        this.intent = consumedLaunchIntent(intent)
         val fromNotif = intent.hasExtra("fromNotification")
         if (fromNotif) uiViewModel.run {
             if (playerSheetState.value == STATE_HIDDEN) return@run

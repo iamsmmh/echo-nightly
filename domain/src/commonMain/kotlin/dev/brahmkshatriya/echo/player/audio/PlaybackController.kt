@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 
 /** Persists/restore the playback session (queue + position). */
 interface PlaybackPersister {
@@ -47,11 +46,22 @@ class PlaybackController(
     val queue: QueueManager,
     private val persister: PlaybackPersister,
     private val logger: EchoLogger,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
     private val onTrackStarted: (suspend (item: QueueItem) -> Unit)? = null,
     /** Bounded automatic network retry / stall watchdog configuration. */
-    private val retryPolicy: RetryPolicy = RetryPolicy()
+    private val retryPolicy: RetryPolicy = RetryPolicy(),
+    private val onTrackCompleted: (suspend (QueueItem, Long) -> Unit)? = null
 ) : RemoteCommandListener {
+
+    private val controllerJob = kotlinx.coroutines.SupervisorJob(scope.coroutineContext[Job])
+    private val scope = CoroutineScope(scope.coroutineContext + controllerJob)
+    // Capture before the initial empty QueueSnapshot can overwrite durable state.
+    private var savedSession: PlaybackState? = persister.restore()
+    private var sessionClaimed = false
+    private var restoring = false
+    private var playRequested = false
+    private var preparedItemId: String? = null
+    private var startedItemId: String? = null
 
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
@@ -105,8 +115,7 @@ class PlaybackController(
 
     /** The sleep timer hit zero: stop playback gracefully. */
     fun onSleepExpired() {
-        engine.pause()
-        _state.value = _state.value.copy(isPlaying = false)
+        onPause()
     }
 
     private fun applyEngineVolume() {
@@ -139,6 +148,7 @@ class PlaybackController(
         scope.launch {
             engine.engineState.collect { engineState ->
                 val current = _state.value.current
+                if (current == null || preparedItemId != current.id || _state.value.isResolving) return@collect
                 _state.value = _state.value.copy(
                     isPlaying = engineState.isPlaying,
                     isBuffering = engineState.isBuffering,
@@ -146,11 +156,19 @@ class PlaybackController(
                     durationMs = if (engineState.durationMs > 0) engineState.durationMs
                     else current?.track?.duration ?: 0,
                     bufferedMs = engineState.bufferedMs,
-                    playbackSpeed = engineState.speed
+                    playbackSpeed = engineState.speed,
+                    error = engineState.error ?: _state.value.error
                 )
+                if (engineState.isPlaying && startedItemId != current.id) {
+                    startedItemId = current.id
+                    onTrackStarted?.invoke(current)
+                }
+                if (!engineState.suppressed) playRequested = engineState.playWhenReady
+                if (engineState.error != null) playRequested = false
                 if (engineState.isPlaying != lastPlaying) {
                     lastPlaying = engineState.isPlaying
                     pushNowPlaying(engineState.positionMs, engineState.isPlaying)
+                    persistSession()
                 }
                 maybeStartCrossfadeDip(engineState.positionMs, _state.value.durationMs)
                 advanceDipFadeIn()
@@ -164,10 +182,15 @@ class PlaybackController(
                 _state.value = _state.value.copy(
                     queue = snapshot.items,
                     currentId = snapshot.currentId,
+                    current = snapshot.items.firstOrNull { it.id == snapshot.currentId },
+                    originalQueue = snapshot.originalItems,
                     shuffleEnabled = snapshot.shuffleEnabled,
                     repeatMode = snapshot.repeatMode
                 )
-                persister.save(_state.value)
+                if (sessionClaimed && !restoring) {
+                    persistSession()
+                    pushNowPlaying(_state.value.positionMs, _state.value.isPlaying)
+                }
             }
         }
         // Periodic position persistence so playback can resume after the
@@ -175,7 +198,7 @@ class PlaybackController(
         scope.launch {
             while (true) {
                 delay(5_000)
-                if (_state.value.current != null) persister.save(_state.value)
+                if (_state.value.current != null && !restoring) persistSession()
             }
         }
         startWatchdog()
@@ -199,9 +222,8 @@ class PlaybackController(
                 delay(WATCHDOG_TICK_MS)
                 val es = engine.engineState.value
                 val currentId = _state.value.current?.id
-                if (currentId == null) continue
-                if (tracker.onTick(currentId, es.isPlaying, es.isBuffering, es.positionMs)) {
-                    handleStall(currentId)
+                if (tracker.onTick(currentId, playRequested && !es.suppressed && !_state.value.isResolving, es.isBuffering, es.positionMs)) {
+                    if (currentId != null) handleStall(currentId)
                 }
             }
         }
@@ -211,7 +233,7 @@ class PlaybackController(
         val item = _state.value.current?.takeIf { it.id == currentId }
             ?: _state.value.queue.firstOrNull { it.id == currentId }
         // Only attempt an automatic recovery for remote streaming sources.
-        val request = lastRequest ?: return
+        val request = lastRequest?.takeIf { preparedItemId == currentId } ?: return
         if (!lastRequestWasRemote || item == null) {
             if (item != null) {
                 surfacePlaybackFailure(item, EchoError.Playback("Playback stalled.", null))
@@ -230,10 +252,17 @@ class PlaybackController(
         }
         logger.info(TAG, "Watchdog: re-preparing stalled track '$currentId' (recovery $watchdogRecoveriesForTrack)")
         scope.launch {
-            engine.prepare(request)
-            applyEngineVolume()
-            engine.setPlaybackSpeed(speed)
-            engine.play()
+            if (!playRequested || _state.value.current?.id != currentId) return@launch
+            try {
+                val resumed = request.copy(startPositionMs = _state.value.positionMs)
+                engine.prepare(resumed)
+                lastRequest = resumed
+                applyEngineVolume()
+                engine.setPlaybackSpeed(speed)
+                engine.play()
+            } catch (failure: Exception) {
+                surfacePlaybackFailure(item, failure.toPlaybackError())
+            }
         }
     }
 
@@ -242,45 +271,72 @@ class PlaybackController(
     // (lock screen / Control Centre / notification commands)
 
     override fun onPlay() {
-        if (!_state.value.isPlaying) playPause()
+        if (!sessionClaimed) restoreSession()
+        playRequested = true
+        scope.launch {
+            val current = _state.value.current ?: return@launch
+            if (_state.value.isResolving) return@launch
+            if (preparedItemId != current.id || lastRequest == null || _state.value.error != null) {
+                startCurrent(current, _state.value.positionMs)
+            } else engine.play()
+        }
     }
 
     override fun onPause() {
-        if (_state.value.isPlaying) playPause()
+        playRequested = false
+        engine.pause()
+        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+        persistSession()
+        pushNowPlaying(_state.value.positionMs, false)
     }
 
     override fun onTogglePlayPause() = playPause()
-
     override fun onNext() = next(userInitiated = true)
-
     override fun onPrevious() = previous()
-
     override fun onSeekTo(positionMs: Long) = seekTo(positionMs)
+    override fun onSkipForward() = seekTo((_state.value.positionMs + SKIP_COMMAND_MS).coerceAtLeast(0))
+    override fun onSkipBackward() = seekTo((_state.value.positionMs - SKIP_COMMAND_MS).coerceAtLeast(0))
 
-    override fun onSkipForward() {
-        seekTo(_state.value.positionMs + SKIP_COMMAND_MS)
-    }
-
-    override fun onSkipBackward() {
-        seekTo((_state.value.positionMs - SKIP_COMMAND_MS).coerceAtLeast(0))
-    }
-
+    /** Idempotent, paused restoration; pressing Play resolves at the saved position. */
     fun restoreSession() {
-        val restored = persister.restore() ?: return
-        if (restored.queue.isEmpty()) return
+        if (sessionClaimed) return
+        sessionClaimed = true
+        val restored = savedSession ?: return
+        savedSession = null
+        if (restored.queue.isEmpty() || restored.schemaVersion > 2) return
+        restoring = true
         scope.launch {
-            queue.replaceItems(restored.queue, restored.currentId)
-            volume = restored.volume
-            speed = restored.playbackSpeed
-            engine.setVolume(volume)
-            engine.setPlaybackSpeed(speed)
-            _state.value = restored.copy(isPlaying = false, isResolving = false)
+            try {
+                val current = queue.restore(QueueSnapshot(
+                    items = restored.queue, currentId = restored.currentId ?: restored.current?.id,
+                    shuffleEnabled = restored.shuffleEnabled, repeatMode = restored.repeatMode,
+                    originalItems = restored.originalQueue
+                ))
+                volume = restored.volume.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
+                speed = restored.playbackSpeed.takeIf { it.isFinite() }?.coerceIn(0.25f, 3f) ?: 1f
+                _state.value = restored.copy(
+                    current = current, currentId = current?.id, queue = queue.items,
+                    originalQueue = queue.state.value.originalItems,
+                    volume = volume, playbackSpeed = speed,
+                    positionMs = restored.positionMs.coerceIn(0, restored.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE),
+                    isPlaying = false, isBuffering = false, isResolving = false, error = null
+                )
+                applyTrackGain(current)
+                applyEngineVolume()
+                engine.setPlaybackSpeed(speed)
+                pushNowPlaying(_state.value.positionMs, false)
+            } finally {
+                restoring = false
+            }
         }
     }
 
     /** Plays a list of tracks from [startTrackId], replacing the queue. */
     fun playQueue(tracks: List<Track>, extensionId: String, startTrackId: String?, shuffle: Boolean = false) {
         if (tracks.isEmpty()) return
+        sessionClaimed = true
+        savedSession = null
+        playRequested = true
         scope.launch {
             val current = queue.setQueue(tracks, extensionId, startTrackId, shuffle)
             if (current != null) startCurrent(current)
@@ -288,33 +344,36 @@ class PlaybackController(
     }
 
     fun playPause() {
-        val state = _state.value
-        val current = state.current
-        if (current == null) {
-            restoreAndPlayFirst()
-            return
-        }
-        if (state.isResolving) return
-        if (state.isPlaying) engine.pause() else engine.play()
+        if (playRequested || _state.value.isPlaying) onPause() else onPlay()
     }
 
-    private fun restoreAndPlayFirst() {
-        val first = _state.value.queue.firstOrNull() ?: return
-        scope.launch { startCurrent(first) }
+    /** Mixed-provider queues retain each item's origin (universal search / playlists). */
+    fun playItems(items: List<QueueItem>, startId: String? = items.firstOrNull()?.id) {
+        if (items.isEmpty()) return
+        sessionClaimed = true
+        savedSession = null
+        playRequested = true
+        scope.launch {
+            queue.replaceItems(items, startId)?.let { startCurrent(it) }
+        }
     }
 
     fun next(userInitiated: Boolean = true) {
+        resolveJob?.cancel()
+        playRequested = true
         scope.launch {
             val next = queue.advance(userInitiated)
             if (next != null) startCurrent(next)
             else {
-                engine.stop()
+                playRequested = false
+                engine.pause()
                 _state.value = _state.value.copy(isPlaying = false, error = null)
             }
         }
     }
 
     fun previous() {
+        playRequested = true
         scope.launch {
             // Standard music player behaviour: restart the track when more
             // than 3 seconds of it have been played.
@@ -332,16 +391,19 @@ class PlaybackController(
         val clamped = positionMs.coerceIn(0, if (duration > 0) duration else Long.MAX_VALUE)
         engine.seekTo(clamped)
         _state.value = _state.value.copy(positionMs = clamped)
+        lastRequest = lastRequest?.copy(startPositionMs = clamped)
+        persistSession()
+        pushNowPlaying(clamped, _state.value.isPlaying)
     }
 
     fun setVolume(value: Float) {
-        volume = value.coerceIn(0f, 1f)
+        volume = value.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
         applyEngineVolume()
         _state.value = _state.value.copy(volume = volume)
     }
 
     fun setPlaybackSpeed(value: Float) {
-        speed = value.coerceIn(0.25f, 3f)
+        speed = value.takeIf { it.isFinite() }?.coerceIn(0.25f, 3f) ?: 1f
         engine.setPlaybackSpeed(speed)
         _state.value = _state.value.copy(playbackSpeed = speed)
     }
@@ -359,6 +421,7 @@ class PlaybackController(
     }
 
     fun jumpTo(itemId: String) {
+        playRequested = true
         scope.launch {
             val item = queue.jumpTo(itemId) ?: return@launch
             startCurrent(item)
@@ -371,6 +434,8 @@ class PlaybackController(
             val items = tracks.map { QueueItem(newQueueId(), it, extensionId) }
             if (playNext) queue.addNext(items) else queue.addLater(items)
             if (_state.value.current == null) {
+                playRequested = true
+                sessionClaimed = true
                 queue.jumpTo(items.first().id)?.let { startCurrent(it) }
             }
         }
@@ -380,6 +445,7 @@ class PlaybackController(
         scope.launch {
             val becameCurrent = queue.remove(itemId)
             if (becameCurrent != null) startCurrent(becameCurrent)
+            else if (queue.items.isEmpty()) clearQueue()
         }
     }
 
@@ -388,6 +454,13 @@ class PlaybackController(
     }
 
     fun clearQueue() {
+        resolveJob?.cancel()
+        resolveJob = null
+        sessionClaimed = true
+        savedSession = null
+        playRequested = false
+        preparedItemId = null
+        lastRequest = null
         engine.stop()
         scope.launch {
             queue.clear()
@@ -396,9 +469,17 @@ class PlaybackController(
         }
     }
 
-    fun stop() {
-        engine.pause()
-        persister.save(_state.value)
+    fun stop() = onPause()
+
+    /** Stop observers before releasing the platform engine. */
+    fun release() {
+        stop()
+        engine.setRemoteCommandListener(null)
+        controllerJob.cancel()
+    }
+
+    private fun persistSession() {
+        if (sessionClaimed && !restoring) persister.save(_state.value)
     }
 
     fun dismissError() {
@@ -407,16 +488,20 @@ class PlaybackController(
 
     // ------------------------------------------------------------------ core
 
-    private suspend fun startCurrent(item: QueueItem) {
+    private suspend fun startCurrent(item: QueueItem, startPositionMs: Long = 0) {
         resolveJob?.cancel()
+        engine.pause()
+        preparedItemId = null
+        lastRequest = null
+        startedItemId = null
         resolveJob = scope.launch {
             resetWatchdogFor(item.id)
             _state.value = _state.value.copy(
                 current = item, currentId = item.id, isResolving = true, error = null,
-                positionMs = 0, durationMs = item.track.duration ?: 0
+                positionMs = startPositionMs, durationMs = item.track.duration ?: 0,
+                isPlaying = false, isBuffering = false
             )
-            pushNowPlaying(0, false)
-            onTrackStarted?.invoke(item)
+            pushNowPlaying(startPositionMs, false)
 
             var failures = 0
             while (true) {
@@ -434,10 +519,12 @@ class PlaybackController(
                         url = stream.url,
                         headers = stream.headers,
                         isLocalFile = stream.isLocalFile,
-                        mimeType = stream.mimeType
+                        mimeType = stream.mimeType,
+                        startPositionMs = _state.value.positionMs
                     )
                     lastRequestWasRemote = !stream.isLocalFile
                     engine.prepare(lastRequest!!)
+                    preparedItemId = item.id
                     applyTrackGain(item)
                     if (dipActive) {
                         dipFadeInStartMs = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
@@ -446,8 +533,9 @@ class PlaybackController(
                         applyEngineVolume()
                     }
                     engine.setPlaybackSpeed(speed)
-                    engine.play()
                     _state.value = _state.value.copy(isResolving = false)
+                    if (playRequested) engine.play()
+                    persistSession()
                     return@launch
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
@@ -471,6 +559,9 @@ class PlaybackController(
      * to the state + transient message flow.
      */
     private fun surfacePlaybackFailure(item: QueueItem, error: EchoError) {
+        playRequested = false
+        preparedItemId = null
+        lastRequest = null
         logger.error(TAG, "Failed to resolve stream for '${item.title}': ${error.message}", error)
         _state.value = _state.value.copy(isResolving = false, isPlaying = false, error = error.userMessage)
         _messages.tryEmit(error.userMessage)
@@ -484,7 +575,7 @@ class PlaybackController(
     }
 
     private fun maybeStartCrossfadeDip(positionMs: Long, durationMs: Long) {
-        if (crossfadeMs <= 0 || dipActive || !dipFadeInStartMs.isIdle()) return
+        if (crossfadeMs <= 0 || !playRequested || !dipFadeInStartMs.isIdle()) return
         val fadeStart = dev.brahmkshatriya.echo.player.audiofx.CrossfadePolicy
             .fadeStartMs(durationMs, crossfadeMs)
         if (fadeStart < 0 || positionMs < fadeStart) return
@@ -511,8 +602,12 @@ class PlaybackController(
     }
 
     private suspend fun onTrackEnded() {
+        val endedItem = _state.value.current ?: return
+        if (preparedItemId != endedItem.id) return
+        onTrackCompleted?.invoke(endedItem, _state.value.durationMs)
         val snapshot = queue.state.value
         if (snapshot.repeatMode == RepeatMode.ONE) {
+            startedItemId = null
             engine.seekTo(0)
             engine.play()
             return
@@ -522,6 +617,9 @@ class PlaybackController(
             if (crossfadeMs > 0) dipActive = true
             startCurrent(next)
         } else {
+            playRequested = false
+            engine.pause()
+            engine.seekTo(0)
             dipActive = false
             dipFadeInStartMs = -1
             applyEngineVolume()
@@ -547,7 +645,11 @@ class PlaybackController(
                 artworkRequestUrl = (track.cover as? dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder)
                     ?.request?.url,
                 artworkHeaders = (track.cover as? dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder)
-                    ?.request?.headers ?: emptyMap()
+                    ?.request?.headers ?: emptyMap(),
+                queueIndex = queue.items.indexOfFirst { it.id == item.id }.coerceAtLeast(0),
+                queueCount = queue.size,
+                canGoNext = queue.state.value.repeatMode == RepeatMode.ALL || queue.items.lastOrNull()?.id != item.id,
+                canGoPrevious = queue.size > 0
             )
         )
     }
@@ -560,36 +662,6 @@ class PlaybackController(
     private companion object {
         const val TAG = "PlaybackController"
         const val WATCHDOG_TICK_MS = 2_000L
-    }
-}
-
-/**
- * Persists the playback session as JSON inside a [dev.brahmkshatriya.echo.player.platform.KeyValueStore].
- */
-class KeyValuePlaybackPersister(
-    private val store: dev.brahmkshatriya.echo.player.platform.KeyValueStore,
-    private val json: Json
-) : PlaybackPersister {
-
-    override fun save(state: PlaybackState) {
-        runCatching {
-            store.putString(KEY_QUEUE, json.encodeToString(PlaybackState.serializer(), state))
-        }
-    }
-
-    override fun restore(): PlaybackState? {
-        val raw = store.getString(KEY_QUEUE) ?: return null
-        return runCatching { json.decodeFromString(PlaybackState.serializer(), raw) }
-            .onFailure { store.remove(KEY_QUEUE) }
-            .getOrNull()
-    }
-
-    override fun clear() {
-        store.remove(KEY_QUEUE)
-    }
-
-    private companion object {
-        const val KEY_QUEUE = "echo.playback.session"
     }
 }
 

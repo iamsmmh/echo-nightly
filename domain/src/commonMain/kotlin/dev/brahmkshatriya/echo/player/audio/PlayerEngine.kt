@@ -27,7 +27,10 @@ data class EngineState(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val bufferedMs: Long = 0,
-    val speed: Float = 1.0f
+    val speed: Float = 1.0f,
+    val playWhenReady: Boolean = false,
+    val suppressed: Boolean = false,
+    val error: String? = null
 )
 
 /**
@@ -47,7 +50,9 @@ interface PlayerEngine {
     /** Emits when the current item finished playing naturally. */
     val ended: SharedFlow<Unit>
 
-    /** Prepares (and buffers) the given request; does not start playback. */
+    /** Prepares (and buffers) the given request; does not start playback.
+     * Must accept a subsequent play() in the same UI-thread call stack without
+     * racing an asynchronously scheduled prepare. Decoder readiness may be async. */
     fun prepare(request: EngineRequest)
 
     fun play()

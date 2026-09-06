@@ -93,7 +93,7 @@ abstract class AndroidAutoCallback(
         // Phase 1 (stability): browsing while the extension was removed used to
         // crash the whole app with NoSuchElementException.
         val extension = extensions.firstOrNull { it.id == extId }
-            ?: return@future LibraryResult.ofError(LibraryResult.ERROR_ERROR_UNAVAILABLE)
+            ?: return@future LibraryResult.ofError(SessionError.ERROR_SESSION_DISCONNECTED)
         val searchQuery = params?.extras?.getString("search_query") ?: ""
         val type = parentId.substringAfter("$extId/").substringBefore("/")
         when (type) {
@@ -423,7 +423,7 @@ abstract class AndroidAutoCallback(
             page: String,
             pageNumber: Int,
             extId: String,
-            noinline getFeed: T.() -> Feed<Shelf>
+            noinline getFeed: suspend T.() -> Feed<Shelf>
         ) = getList<T> {
             getFeed().toMediaItems(parentId, context, extId, pageNumber)
         }

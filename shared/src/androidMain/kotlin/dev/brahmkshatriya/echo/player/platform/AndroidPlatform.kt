@@ -58,6 +58,12 @@ class AndroidKeyValueStore(name: String) : KeyValueStore {
         editor.apply()
     }
 
+    override fun putStringDurably(key: String, value: String?) {
+        val editor = prefs.edit()
+        if (value == null) editor.remove(key) else editor.putString(key, value)
+        check(editor.commit()) { "Could not persist settings" }
+    }
+
     override fun getLong(key: String): Long = prefs.getLong(key, 0)
     override fun putLong(key: String, value: Long) = prefs.edit().putLong(key, value).apply()
     override fun getBoolean(key: String): Boolean = prefs.getBoolean(key, false)
@@ -142,14 +148,15 @@ class AndroidHttpClient(private val logger: EchoLogger) : HttpClient {
         val base = if (append && file.exists() && file.length() > 0) file.length() else 0
         val connection = open(request)
         try {
-            if (base > 0) connection.setRequestProperty("Range", "bytes=$base-")
+            connection.setRequestProperty("Accept-Encoding", "identity")
+            val range = if (base > 0) "bytes=$base-" else request.headers.header("Range")
+            if (range != null) connection.setRequestProperty("Range", range)
             val status = connection.responseCode
-            if (status !in 200..299 && status != 206) {
-                throw EchoError.Network("Download failed", statusCode = status)
-            }
-            val appendMode = status == 206 && base > 0
-            val totalRaw = connection.contentLengthLong
-            val total = if (totalRaw > 0) totalRaw + (if (appendMode) base else 0) else -1
+            val headers = connection.headerFields.filterKeys { it != null }
+                .map { (key, value) -> key!! to value.joinToString(",") }.toMap()
+            val plan = validateDownloadResponse(status, headers, base, range)
+            val appendMode = plan.append
+            val total = plan.totalBytes
 
             file.parentFile?.mkdirs()
             val output = java.io.FileOutputStream(file, appendMode)
@@ -165,6 +172,7 @@ class AndroidHttpClient(private val logger: EchoLogger) : HttpClient {
                     onProgress(written, total)
                 }
                 output.flush()
+                plan.verifyBodySize(written - plan.offset)
             } finally {
                 runCatching { output.close() }
                 runCatching { input.close() }

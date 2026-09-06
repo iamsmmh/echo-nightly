@@ -22,19 +22,19 @@ import platform.UIKit.UIViewController
 /** NSLog based logger for iOS. Never logs credentials (see sanitizeUrl). */
 class IosEchoLogger : EchoLogger {
     override fun debug(tag: String, message: String) {
-        NSLog("ECHO D [%s] %s", tag, message.replace('%', '⁇'))
+        NSLog("%@", "ECHO D [$tag] $message")
     }
 
     override fun info(tag: String, message: String) {
-        NSLog("ECHO I [%s] %s", tag, message.replace('%', '⁚'))
+        NSLog("%@", "ECHO I [$tag] $message")
     }
 
     override fun warn(tag: String, message: String, throwable: Throwable?) {
-        NSLog("ECHO W [%s] %s %@", tag, message.replace('%', '⁚'), throwable?.toString() ?: "")
+        NSLog("%@", "ECHO W [$tag] $message")
     }
 
     override fun error(tag: String, message: String, throwable: Throwable?) {
-        NSLog("ECHO E [%s] %s %@", tag, message.replace('%', '⁚'), throwable?.toString() ?: "")
+        NSLog("%@", "ECHO E [$tag] $message")
     }
 }
 
@@ -107,9 +107,7 @@ object IosApplication {
     fun currentNowPlayingJson(): String? =
         NSUserDefaults.standardUserDefaults.stringForKey(KEY_NOW_PLAYING)
 
-    private companion object {
-        const val KEY_NOW_PLAYING = "echo.nowplaying"
-    }
+    private const val KEY_NOW_PLAYING = "echo.nowplaying"
 }
 
 /** Compose Multiplatform entry point consumed by the SwiftUI host. */

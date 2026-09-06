@@ -12,10 +12,10 @@ class SettingsRepositoryTest {
     @Test
     fun `settings roundtrip and defaults`() {
         val store = InMemoryKeyValueStore()
-        val repo = SettingsRepository(store)
+        val repo = SettingsRepository(store, dev.brahmkshatriya.echo.player.security.InMemorySecureStorage())
         assertEquals(PlayerSettings(), repo.settings)
         repo.update { it.copy(activeExtensionId = "subsonic", downloadMaxBitrateKbps = 192) }
-        val reloaded = SettingsRepository(store).settings
+        val reloaded = SettingsRepository(store, dev.brahmkshatriya.echo.player.security.InMemorySecureStorage()).settings
         assertEquals("subsonic", reloaded.activeExtensionId)
         assertEquals(192, reloaded.downloadMaxBitrateKbps)
     }
@@ -24,7 +24,7 @@ class SettingsRepositoryTest {
     fun `unknown future fields fall back to defaults`() {
         val store = InMemoryKeyValueStore()
         store.putString("echo.player.settings", """{"activeExtensionId":"x","totallyNewField":1}""")
-        val settings = SettingsRepository(store).settings
+        val settings = SettingsRepository(store, dev.brahmkshatriya.echo.player.security.InMemorySecureStorage()).settings
         assertEquals("x", settings.activeExtensionId)
         assertEquals(1.0f, settings.defaultPlaybackSpeed)
     }
@@ -32,7 +32,7 @@ class SettingsRepositoryTest {
     @Test
     fun `listeners are notified`() {
         val store = InMemoryKeyValueStore()
-        val repo = SettingsRepository(store)
+        val repo = SettingsRepository(store, dev.brahmkshatriya.echo.player.security.InMemorySecureStorage())
         var seen = repo.settings
         repo.addListener { seen = it }
         repo.update { it.copy(transcodeFormat = "mp3") }
@@ -59,7 +59,7 @@ class PlaylistRepositoryTest {
 
         // reorder
         assertTrue(repo.moveTrack(playlist.id, 0, 2))
-        assertEquals("c", repo.get(playlist.id)!!.tracks[0].trackId)
+        assertEquals(listOf("b", "c", "a"), repo.get(playlist.id)!!.tracks.map { it.trackId })
 
         // remove
         assertTrue(repo.removeTrack(playlist.id, "c"))

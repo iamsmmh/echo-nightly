@@ -50,4 +50,21 @@ final class EchoIosTests: XCTestCase {
         EchoIosBridge.shared.importFiles(paths: [])
         XCTAssertEqual(EchoIosBridge.shared.libraryCount(), 0)
     }
+    /// Keychain needs a real application host; simctl's standalone native test
+    /// executable does not have access to the simulator's security services.
+    func testKeychainRoundtripUpdateDeleteAndNamespaceIsolation() throws {
+        let namespace = "keychain-test-" + UUID().uuidString
+        let store = IosSecureStorage(name: namespace)
+        let other = IosSecureStorage(name: namespace + "-other")
+        defer { try? store.remove(key_: "account") }
+        XCTAssertNil(try store.get(key: "account"))
+        try store.put(key: "account", value: "pass — é 🎵")
+        XCTAssertEqual(try IosSecureStorage(name: namespace).get(key: "account"), "pass — é 🎵")
+        XCTAssertNil(try other.get(key: "account"))
+        try store.put(key: "account", value: "updated")
+        XCTAssertEqual(try store.get(key: "account"), "updated")
+        try store.remove(key_: "account")
+        XCTAssertNil(try store.get(key: "account"))
+        try store.remove(key_: "account")
+    }
 }

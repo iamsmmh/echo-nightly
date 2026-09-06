@@ -49,6 +49,18 @@ class JvmKeyValueStore(name: String) : KeyValueStore {
     }
 
     @Synchronized
+    override fun putStringDurably(key: String, value: String?) {
+        if (value == null) props.remove(key) else props.setProperty(key, value)
+        val temporary = File(file.parentFile, file.name + ".tmp")
+        java.io.FileOutputStream(temporary).use { output ->
+            props.store(output, "echo shared store")
+            output.fd.sync()
+        }
+        java.nio.file.Files.move(temporary.toPath(), file.toPath(),
+            java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    @Synchronized
     override fun getLong(key: String): Long = props.getProperty(key)?.toLongOrNull() ?: 0L
 
     @Synchronized
@@ -178,31 +190,28 @@ class JvmHttpClient(private val logger: EchoLogger) : HttpClient {
             conn.connectTimeout = request.connectTimeoutMs.toInt()
             conn.readTimeout = request.requestTimeoutMs.toInt()
             request.headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
-            if (resumeFrom > 0) conn.setRequestProperty("Range", "bytes=$resumeFrom-")
+            conn.setRequestProperty("Accept-Encoding", "identity")
+            val range = if (resumeFrom > 0) "bytes=$resumeFrom-" else request.headers.header("Range")
+            if (range != null) conn.setRequestProperty("Range", range)
             val code = conn.responseCode
-            val ranged = code == HttpURLConnection.HTTP_PARTIAL
-            if (code !in 200..299 && code != HttpURLConnection.HTTP_PARTIAL)
-                throw EchoError.Network("HTTP $code while downloading", code)
-            val totalHeader = conn.getHeaderField("Content-Length")?.toLongOrNull()
-            val total = when {
-                ranged -> (totalHeader ?: 0L) + resumeFrom
-                else -> totalHeader ?: -1L
-            }
-            var written = if (ranged) resumeFrom else 0L
-            if (!ranged && target.exists()) target.delete()
+            val headers = conn.headerFields.filterKeys { it != null }
+                .map { (key, values) -> key!! to values.joinToString(",") }.toMap()
+            val plan = validateDownloadResponse(code, headers, resumeFrom, range)
+            val total = plan.totalBytes
+            var written = plan.offset
             conn.inputStream.use { input ->
-                target.outputStream().use { out ->
-                    if (ranged && resumeFrom > 0) out.channel.position(resumeFrom)
+                java.io.FileOutputStream(target, plan.append).use { out ->
                     val buffer = ByteArray(64 * 1024)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
-                        kotlinx.coroutines.ensureActive()
+                        ensureActive()
                         out.write(buffer, 0, read)
                         written += read
                         onProgress(written, total)
                     }
                 }
             }
+            plan.verifyBodySize(written - plan.offset)
             destination
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

@@ -28,7 +28,8 @@ data class QueueSnapshot(
     val currentId: String? = null,
     val shuffleEnabled: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
-    val shuffleSeed: Long? = null
+    val shuffleSeed: Long? = null,
+    val originalItems: List<QueueItem> = emptyList()
 )
 
 /** Generates unique queue item ids; injectable for deterministic tests. */

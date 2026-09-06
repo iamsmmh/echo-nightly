@@ -65,13 +65,9 @@ enum class Dest(val label: String) {
  */
 @Composable
 fun EchoApp(graph: AppGraph) {
-    val useDark = graph.settings.settings.useDarkTheme
-    var themeOverride by remember { mutableStateOf(useDark) }
-    LaunchedEffect(Unit) {
-        graph.settings.addListener { themeOverride = it.useDarkTheme }
-    }
+    val appearance by graph.settings.state.collectAsState()
 
-    EchoTheme(useDarkThemeOverride = themeOverride) {
+    EchoTheme(useDarkThemeOverride = appearance.useDarkTheme, amoled = appearance.amoledMode, dynamic = appearance.dynamicTheme) {
         val playback by graph.player.state.collectAsState()
         var dest by remember { mutableStateOf(Dest.HOME) }
         var showPlayer by remember { mutableStateOf(false) }

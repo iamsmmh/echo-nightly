@@ -12,6 +12,7 @@ import dev.brahmkshatriya.echo.player.audio.QueueItem
 import dev.brahmkshatriya.echo.player.audio.ResolvedStream
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
+import dev.brahmkshatriya.echo.player.domain.runCatchingCancellable
 import dev.brahmkshatriya.echo.player.library.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -84,13 +85,18 @@ class ExtensionRuntime(
 
     private val disabledIds = mutableSetOf<String>()
 
+    var searchRevision: Long = 0
+        private set
+
     init {
+        settings.addListener { searchRevision++ }
         settings.settings.disabledExtensions.forEach { disabledIds.add(it) }
         publish()
     }
 
     val activeExtensionId: String?
-        get() = settings.settings.activeExtensionId ?: firstEnabled()?.extension?.id
+        get() = settings.settings.activeExtensionId?.takeIf { id -> _extensions.value.any { it.extension.id == id && it.enabled } }
+            ?: firstEnabled()?.extension?.id
 
     fun activeExtension(): MusicExtension? {
         val wanted = activeExtensionId ?: return null
@@ -98,7 +104,7 @@ class ExtensionRuntime(
     }
 
     fun setActiveExtension(id: String) {
-        val known = _extensions.value.any { it.extension.id == id }
+        val known = _extensions.value.any { it.extension.id == id && it.enabled }
         if (!known) {
             logger.warn(TAG, "Tried to select unknown extension $id")
             return
@@ -136,7 +142,7 @@ class ExtensionRuntime(
     suspend fun <T> withActiveClient(block: suspend (ExtensionClient) -> T): Result<T> {
         val extension = activeExtension()
             ?: return Result.failure(EchoError.Extension("No music extension selected"))
-        return runCatching {
+        return runCatchingCancellable {
             val client = extension.instance.value().getOrNull()
                 ?: throw EchoError.Extension("Could not initialize ${extension.name}", extension.id)
             try {
@@ -152,7 +158,7 @@ class ExtensionRuntime(
     }
 
     fun extensionFor(id: String): MusicExtension? =
-        _extensions.value.firstOrNull { it.extension.id == id }?.extension
+        _extensions.value.firstOrNull { it.extension.id == id && it.enabled }?.extension
 
     /** Lists extensions supporting searching (for the search aggregator). */
     fun searchableExtensions(): List<MusicExtension> =

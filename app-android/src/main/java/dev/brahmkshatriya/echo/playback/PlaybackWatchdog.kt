@@ -1,6 +1,8 @@
 package dev.brahmkshatriya.echo.playback
 
 import android.content.SharedPreferences
+import android.os.SystemClock
+import kotlinx.coroutines.Dispatchers
 import androidx.annotation.OptIn
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -33,14 +35,14 @@ class PlaybackWatchdog(
 
     private var job: Job? = null
     private var lastPosition = -1L
-    private var lastProgressAt = System.currentTimeMillis()
-    private var lastStateChangeAt = System.currentTimeMillis()
+    private var lastProgressAt = SystemClock.elapsedRealtime()
+    private var lastStateChangeAt = SystemClock.elapsedRealtime()
     private var lastState = Player.STATE_IDLE
     private var recoveries = 0
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
-            lastStateChangeAt = System.currentTimeMillis()
+            lastStateChangeAt = SystemClock.elapsedRealtime()
             lastState = playbackState
         }
 
@@ -49,10 +51,7 @@ class PlaybackWatchdog(
         }
 
         override fun onEvents(player: Player, events: Player.Events) {
-            if (player.currentPosition > lastPosition + 250) {
-                lastPosition = player.currentPosition
-                lastProgressAt = System.currentTimeMillis()
-            }
+            markProgress(player.currentPosition)
         }
     }
 
@@ -62,7 +61,9 @@ class PlaybackWatchdog(
     fun start() {
         if (job != null) return
         player.addListener(listener)
-        job = scope.launch {
+        // The service's scope performs IO work. Player access must still use
+        // its main application looper, including reads of isPlaying/position.
+        job = scope.launch(Dispatchers.Main.immediate) {
             while (isActive) {
                 if (enabled) tick() else reset()
                 delay(TICK_MS)
@@ -76,11 +77,23 @@ class PlaybackWatchdog(
         player.removeListener(listener)
     }
 
+    private fun markProgress(position: Long) {
+        if (progressChanged(lastPosition, position)) {
+            lastPosition = position
+            lastProgressAt = SystemClock.elapsedRealtime()
+        }
+    }
+
     private fun tick() {
-        if (!player.isPlaying) return
-        val now = System.currentTimeMillis()
+        if (!shouldMonitor(player.playWhenReady, player.playbackState, player.playbackSuppressionReason)) {
+            reset()
+            return
+        }
+        // Media3 does not emit a Player.Listener event for every position tick.
+        markProgress(player.currentPosition)
+        val now = SystemClock.elapsedRealtime()
         val sample = dev.brahmkshatriya.echo.player.core.StallSample(
-            isPlaying = player.isPlaying,
+            isPlaying = player.playWhenReady,
             isBuffering = player.playbackState == Player.STATE_BUFFERING,
             positionMs = player.currentPosition.coerceAtLeast(0),
             elapsedSinceProgressMs = now - lastProgressAt,
@@ -119,11 +132,18 @@ class PlaybackWatchdog(
     private fun reset() {
         recoveries = 0
         lastPosition = -1
-        lastProgressAt = System.currentTimeMillis()
-        lastStateChangeAt = System.currentTimeMillis()
+        lastProgressAt = SystemClock.elapsedRealtime()
+        lastStateChangeAt = SystemClock.elapsedRealtime()
     }
 
     companion object {
+        internal fun shouldMonitor(intent: Boolean, state: Int, suppression: Int): Boolean =
+            intent && suppression == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+                (state == Player.STATE_READY || state == Player.STATE_BUFFERING)
+
+        internal fun progressChanged(previous: Long, current: Long): Boolean =
+            previous < 0 || kotlin.math.abs(current - previous) > 250
+
         const val WATCHDOG_KEY = "playback_watchdog"
         private const val TICK_MS = 5_000L
         private val policy = dev.brahmkshatriya.echo.player.core.WatchdogPolicy(

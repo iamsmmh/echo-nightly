@@ -1,33 +1,11 @@
 package dev.brahmkshatriya.echo.player.library
 
 import dev.brahmkshatriya.echo.player.platform.KeyValueStore
-import kotlinx.serialization.Serializable
+import dev.brahmkshatriya.echo.player.domain.playlists.SmartPlaylist
+import dev.brahmkshatriya.echo.player.domain.playlists.SmartPlaylistEngine
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-
-/** A lightweight serializable reference to a track from any extension. */
-@Serializable
-data class TrackRef(
-    val extensionId: String,
-    val trackId: String,
-    val title: String,
-    val artist: String,
-    val album: String? = null,
-    val artworkUrl: String? = null,
-    val durationMs: Long? = null
-) {
-    val key: String get() = "$extensionId::$trackId"
-}
-
-/** A user created playlist stored locally (shared by both platforms). */
-@Serializable
-data class UserPlaylist(
-    val id: String,
-    val name: String,
-    val tracks: List<TrackRef>,
-    val createdAtMs: Long,
-    val updatedAtMs: Long
-)
 
 /**
  * Local playlist repository: create, rename, delete, add/remove/reorder
@@ -41,11 +19,32 @@ class PlaylistRepository(private val store: KeyValueStore) {
     private val _playlists = kotlinx.coroutines.flow.MutableStateFlow<List<UserPlaylist>>(emptyList())
     val playlists: kotlinx.coroutines.flow.StateFlow<List<UserPlaylist>> = _playlists
 
+    private val smartSerializer = ListSerializer(SmartPlaylist.serializer())
+    private val _smartPlaylists = kotlinx.coroutines.flow.MutableStateFlow<List<SmartPlaylist>>(emptyList())
+    val smartPlaylists: kotlinx.coroutines.flow.StateFlow<List<SmartPlaylist>> = _smartPlaylists
+
+    fun saveSmart(playlist: SmartPlaylist) {
+        SmartPlaylistEngine(::now).validate(playlist)
+        val next = _smartPlaylists.value.filterNot { it.id == playlist.id } + playlist
+        store.putString(SMART_KEY, json.encodeToString(smartSerializer, next))
+        _smartPlaylists.value = next
+    }
+
+    fun deleteSmart(id: String) {
+        val next = _smartPlaylists.value.filterNot { it.id == id }
+        store.putString(SMART_KEY, json.encodeToString(smartSerializer, next))
+        _smartPlaylists.value = next
+    }
+
     init {
         load()
+        _smartPlaylists.value = store.getString(SMART_KEY)?.let {
+            runCatching { json.decodeFromString(smartSerializer, it) }.getOrNull()
+        }.orEmpty().filter { runCatching { SmartPlaylistEngine(::now).validate(it) }.isSuccess }
     }
 
     fun create(name: String): UserPlaylist {
+        require(name.isNotBlank()) { "Playlist name must not be empty" }
         val playlist = UserPlaylist(
             id = newId(),
             name = name.trim(),
@@ -58,6 +57,7 @@ class PlaylistRepository(private val store: KeyValueStore) {
     }
 
     fun rename(id: String, name: String): Boolean {
+        if (name.isBlank()) return false
         val list = _playlists.value
         val index = list.indexOfFirst { it.id == id }
         if (index == -1) return false
@@ -80,7 +80,7 @@ class PlaylistRepository(private val store: KeyValueStore) {
             if (i == index) {
                 // append while avoiding duplicates
                 val existing = p.tracks.map { it.key }.toSet()
-                p.copy(tracks = p.tracks + tracks.filterNot { it.key in existing }, updatedAtMs = now())
+                p.copy(tracks = p.tracks + tracks.filterNot { it.key in existing }.distinctBy { it.key }, updatedAtMs = now())
             } else p
         })
         return true
@@ -141,6 +141,7 @@ class PlaylistRepository(private val store: KeyValueStore) {
 
     private companion object {
         const val KEY = "echo.player.playlists"
+        const val SMART_KEY = "echo.player.smart-playlists.v1"
     }
 }
 
@@ -177,19 +178,20 @@ class FavoritesRepository(private val store: KeyValueStore) {
     }
 }
 
-/** A history entry of a played track. */
-@Serializable
-data class HistoryEntry(
-    val ref: TrackRef,
-    val playedAtMs: Long,
-    val msPlayed: Long
-)
-
 /** Recently played history, most recent first, capped to [LIMIT]. */
-class HistoryRepository(private val store: KeyValueStore) {
+class HistoryRepository(
+    private val store: KeyValueStore,
+    private val now: () -> Long = { dev.brahmkshatriya.echo.player.domain.nowEpochMs() }
+) {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val listSerializer = ListSerializer(HistoryEntry.serializer())
+
+    private val statsSerializer = kotlinx.serialization.builtins.MapSerializer(
+        String.serializer(), ListeningStats.serializer()
+    )
+    private val _stats = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ListeningStats>>(emptyMap())
+    val stats: kotlinx.coroutines.flow.StateFlow<Map<String, ListeningStats>> = _stats
 
     private val _history = kotlinx.coroutines.flow.MutableStateFlow<List<HistoryEntry>>(emptyList())
     val history: kotlinx.coroutines.flow.StateFlow<List<HistoryEntry>> = _history
@@ -203,22 +205,49 @@ class HistoryRepository(private val store: KeyValueStore) {
         }
     }
 
+    init {
+        val persisted = store.getString(STATS_KEY)?.let { runCatching { json.decodeFromString(statsSerializer, it) }.getOrNull() }
+        // Old recent history has one retained entry per track. Counts before this
+        // migration are unknowable; seed one known listen, not invented totals.
+        _stats.value = persisted ?: _history.value.associate {
+            it.ref.key to ListeningStats(1, 0, it.playedAtMs, it.msPlayed.coerceAtLeast(0))
+        }
+    }
+
     fun record(ref: TrackRef, msPlayed: Long) {
-        val entry = HistoryEntry(ref, now(), msPlayed)
+        val timestamp = now()
+        val old = _stats.value[ref.key] ?: ListeningStats()
+        _stats.value = _stats.value + (ref.key to old.copy(
+            playCount = (old.playCount + 1).coerceAtLeast(old.playCount),
+            lastPlayedAtMs = timestamp,
+            totalPlayedMs = old.totalPlayedMs + msPlayed.coerceAtLeast(0)
+        ))
+        store.putString(STATS_KEY, json.encodeToString(statsSerializer, _stats.value))
+        val entry = HistoryEntry(ref, timestamp, msPlayed.coerceAtLeast(0))
         _history.value = (listOf(entry) + _history.value)
             .distinctBy { it.ref.key }
             .take(LIMIT)
         store.putString(KEY, json.encodeToString(listSerializer, _history.value))
     }
 
+    fun recordCompletion(ref: TrackRef, msPlayed: Long) {
+        val old = _stats.value[ref.key] ?: ListeningStats()
+        _stats.value = _stats.value + (ref.key to old.copy(
+            completedCount = old.completedCount + 1,
+            totalPlayedMs = old.totalPlayedMs + msPlayed.coerceAtLeast(0)
+        ))
+        store.putString(STATS_KEY, json.encodeToString(statsSerializer, _stats.value))
+    }
+
     fun clear() {
         _history.value = emptyList()
         store.remove(KEY)
+        _stats.value = emptyMap()
+        store.remove(STATS_KEY)
     }
 
-    private fun now(): Long = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
-
     private companion object {
+        const val STATS_KEY = "echo.player.listening.stats.v1"
         const val KEY = "echo.player.history"
         const val LIMIT = 200
     }

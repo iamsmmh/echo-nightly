@@ -38,6 +38,7 @@ class SubsonicAuthTest {
         val url = api.streamUrl("42", 0, "raw")
         assertTrue(url.startsWith("https://example.com/rest/stream?"))
         assertTrue(url.contains("u=admin"))
+        assertTrue(url.contains("f=json"))
         assertTrue(url.contains("t="))
         assertTrue(url.contains("s="))
         // salt is 12 chars; token is 32 hex chars
@@ -60,6 +61,7 @@ class SubsonicAuthTest {
     fun `url encoding escapes special characters`() {
         assertEquals("a%20b", SubsonicApi.encode("a b"))
         assertEquals("%C3%A9", SubsonicApi.encode("é"))
+        assertEquals("%F0%9F%8E%B5", SubsonicApi.encode("🎵"))
         assertEquals("abcXYZ09-_.~", SubsonicApi.encode("abcXYZ09-_.~"))
     }
 
@@ -71,5 +73,13 @@ class SubsonicAuthTest {
         assertTrue(sanitized.contains("s=***"))
         assertFalse(sanitized.contains("deadbeef"))
         assertTrue(sanitized.contains("id=1"))
+    }
+    @Test fun clearingConfigurationDropsCredentialsAndDisablesRequests() {
+        val api = SubsonicApi(TestHttp(), TestLogger())
+        api.configure(SubsonicApi.ServerConfig("https://example.com", "admin", "pw"))
+        assertTrue(api.isConfigured)
+        api.clearConfiguration()
+        assertFalse(api.isConfigured)
+        kotlin.test.assertFails { api.streamUrl("42", 0, "raw") }
     }
 }

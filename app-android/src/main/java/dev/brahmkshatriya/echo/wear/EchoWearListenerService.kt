@@ -17,6 +17,8 @@ class EchoWearListenerService : WearableListenerService() {
         val command = runCatching {
             WearProtocol.Command.valueOf(String(message.data))
         }.getOrNull() ?: return
+        val nodeId = message.sourceNodeId
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
         val bridge = WearBridge.active
         if (bridge == null) {
             // No live player: wake PlayerService (its crash-resume path restores
@@ -26,10 +28,11 @@ class EchoWearListenerService : WearableListenerService() {
                     Intent(this, dev.brahmkshatriya.echo.playback.PlayerService::class.java)
                 )
             }
-            return
+            return@post
         }
-        bridge.onWatchConnected(message.sourceNodeId)
+        bridge.onWatchConnected(nodeId)
         runCatching { bridge.handleCommand(command) }
+        }
     }
 
 }

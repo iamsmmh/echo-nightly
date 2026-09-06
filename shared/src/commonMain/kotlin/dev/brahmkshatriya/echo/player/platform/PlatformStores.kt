@@ -1,8 +1,12 @@
 package dev.brahmkshatriya.echo.player.platform
 
+import dev.brahmkshatriya.echo.common.models.EchoFile
+
 interface KeyValueStore {
     fun getString(key: String): String?
     fun putString(key: String, value: String?)
+    /** Persist synchronously or throw; used for cross-store credential migration. */
+    fun putStringDurably(key: String, value: String?)
     fun getLong(key: String): Long
     fun putLong(key: String, value: Long)
     fun getBoolean(key: String): Boolean
@@ -21,6 +25,8 @@ class InMemoryKeyValueStore : KeyValueStore {
     override fun putString(key: String, value: String?) {
         if (value == null) strings.remove(key) else strings[key] = value
     }
+
+    override fun putStringDurably(key: String, value: String?) = putString(key, value)
 
     override fun getLong(key: String): Long = longs[key] ?: 0L
     override fun putLong(key: String, value: Long) {

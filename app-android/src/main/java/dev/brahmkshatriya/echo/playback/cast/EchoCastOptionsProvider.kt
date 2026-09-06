@@ -14,7 +14,7 @@ class EchoCastOptionsProvider : OptionsProvider {
 
     override fun getCastOptions(context: Context): CastOptions = CastOptions.Builder()
         .setReceiverApplicationId(DEFAULT_RECEIVER)
-        .setStopReceiverOnAppForeground(false)
+        .setStopReceiverApplicationWhenEndingSession(false)
         .build()
 
     override fun getAdditionalSessionProviders(context: Context): List<SessionProvider>? = null

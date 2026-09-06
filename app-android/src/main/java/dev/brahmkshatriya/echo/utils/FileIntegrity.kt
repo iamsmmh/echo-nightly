@@ -53,14 +53,17 @@ object FileIntegrity {
             else Result.failure(IntegrityError("unrecognised audio data ${file.name}"))
         }
         val (size, hash) = runCatching {
-            sidecar.readText().trim().split(' ').let { it[0].toLong() to it[1] }
+            val fields = sidecar.readText().trim().split(Regex("\\s+"))
+            require(fields.size == 2 && fields[1].matches(Regex("[a-fA-F0-9]{64}")))
+            fields[0].toLong().also { require(it > 0) } to fields[1].lowercase()
         }.getOrElse {
-            return Result.success(Unit) // malformed sidecar -> trust header sniff instead
+            return Result.failure(IntegrityError("invalid integrity record for ${file.name}"))
         }
         if (size != file.length())
             return Result.failure(IntegrityError("size mismatch for ${file.name}"))
         val actual = sha256(file)
-        if (hash.isNotEmpty() && actual != null && actual != hash)
+            ?: return Result.failure(IntegrityError("could not verify ${file.name}"))
+        if (actual != hash)
             return Result.failure(IntegrityError("checksum mismatch for ${file.name}"))
         return Result.success(Unit)
     }
@@ -82,7 +85,7 @@ object FileIntegrity {
     /** True when the first bytes look like an audio container. */
     fun hasAudioHeader(file: File): Boolean = runCatching {
         RandomAccessFile(file, "r").use { raf ->
-            val n = minOf(HEADER_BYTES.toLong, raf.length()).toInt()
+            val n = minOf(HEADER_BYTES.toLong(), raf.length()).toInt()
             val header = ByteArray(n)
             raf.readFully(header)
             dev.brahmkshatriya.echo.player.domain.AudioFormat.looksLikeAudio(header)

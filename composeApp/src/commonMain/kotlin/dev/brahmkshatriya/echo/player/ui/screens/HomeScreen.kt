@@ -18,8 +18,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.launch
+import dev.brahmkshatriya.echo.player.domain.recommendations.RecommendationEngine
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +46,19 @@ fun HomeScreen(graph: AppGraph) {
     var shelves by remember { mutableStateOf<List<Shelf>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val activeId = graph.extensions.activeExtensionId
+    val localTracks by graph.library.tracks.collectAsState()
+    val stats by graph.history.stats.collectAsState()
+    val favorites by graph.favorites.favorites.collectAsState()
+    val downloads by graph.downloads.downloads.collectAsState()
+    val catalog = remember(localTracks, stats, favorites, downloads) { graph.catalogSnapshot() }
+    var mood by remember { mutableStateOf(RecommendationEngine.Mood.CALM) }
+    val recommended = remember(catalog, mood) { RecommendationEngine.Kind.entries.mapNotNull { kind ->
+        val matches = graph.recommendations.recommend(kind, catalog, mood = mood)
+        if (matches.isEmpty()) null else kind to matches
+    } }
+    val preferences by graph.settings.state.collectAsState()
+    val registered by graph.extensions.extensions.collectAsState()
+    val activeId = remember(preferences.activeExtensionId, registered) { graph.extensions.activeExtensionId }
     LaunchedEffect(activeId) {
         shelves = null
         error = null
@@ -54,15 +70,15 @@ fun HomeScreen(graph: AppGraph) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(title = { Text(activeExtensionName(graph)) })
         when {
-            shelves == null && error == null -> Column(
+            shelves == null && error == null && recommended.isEmpty() -> Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator()
             }
-            error != null -> HomeMessage(graph, "Could not load the feed.\n$error")
-            shelves?.isEmpty() == true -> HomeMessage(
+            error != null && recommended.isEmpty() -> HomeMessage(graph, "Could not load the feed.\n$error")
+            shelves?.isEmpty() == true && recommended.isEmpty() -> HomeMessage(
                 graph,
                 if (activeId == dev.brahmkshatriya.echo.player.extensions.local.LocalExtensionClient.ID)
                     "Your library is empty. Import audio files from the Library tab, or connect a Subsonic server in Extensions."
@@ -72,7 +88,28 @@ fun HomeScreen(graph: AppGraph) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                shelves!!.forEach { shelf ->
+                if (error != null) item(key = "feed-error") {
+                    Text("Remote feed unavailable. Your local recommendations are still available.", modifier = Modifier.padding(16.dp))
+                }
+                if (recommended.isNotEmpty()) {
+                    item(key = "recommendation-mood") {
+                        TextButton(onClick = { mood = RecommendationEngine.Mood.entries[(mood.ordinal + 1) % RecommendationEngine.Mood.entries.size] }) {
+                            Text("Mood: ${mood.name.lowercase().replaceFirstChar { it.uppercase() }} · change")
+                        }
+                    }
+                }
+                recommended.forEach { (kind, matches) ->
+                    item(key = "recommendation-${kind.name}") {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Text(kind.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleMedium)
+                            matches.take(5).forEach { song ->
+                                Text(song.ref.title + " · " + song.ref.artist,
+                                    modifier = Modifier.fillMaxWidth().clickable { graph.playRefs(listOf(song.ref)) }.padding(vertical = 10.dp))
+                            }
+                        }
+                    }
+                }
+                shelves.orEmpty().forEach { shelf ->
                     item(key = shelf.id) {
                         ShelfSection(graph, shelf)
                     }
@@ -213,15 +250,31 @@ fun ShelfItem(graph: AppGraph, item: EchoMediaItem, wide: Boolean) {
     }
 }
 
-/** Plays a track directly; lists (albums/artists) open their detail screen. */
+/** Selection always uses the provider that produced the result, not the active tab. */
 fun playMediaItem(graph: AppGraph, item: EchoMediaItem) {
-    when (item) {
-        is Track -> {
-            val extensionId = graph.extensions.activeExtensionId ?: return
-            graph.player.playQueue(listOf(item), extensionId, item.id)
-        }
-        else -> {
-            // handled by detail screens via openMediaItem
-        }
+    val extensionId = graph.providerIdFor(item)
+    if (item is Track) {
+        graph.player.playQueue(listOf(item), extensionId, item.id)
+        return
+    }
+    graph.scope.launch {
+        dev.brahmkshatriya.echo.player.domain.runCatchingCancellable {
+            val extension = graph.extensions.extensionFor(extensionId) ?: return@runCatchingCancellable
+            val client = extension.instance.value().getOrThrow()
+            val tracks = when {
+                item is dev.brahmkshatriya.echo.common.models.Album && client is dev.brahmkshatriya.echo.common.clients.AlbumClient -> {
+                    val feed = client.loadTracks(client.loadAlbum(item))
+                    feed?.let { it.getPagedData(it.notSortTabs.firstOrNull()).pagedData.loadAll() }.orEmpty()
+                }
+                item is dev.brahmkshatriya.echo.common.models.Artist && client is dev.brahmkshatriya.echo.common.clients.ArtistClient -> {
+                    val feed = client.loadFeed(client.loadArtist(item))
+                    feed.getPagedData(feed.notSortTabs.firstOrNull()).pagedData.loadPage(null).data.flatMap { shelf ->
+                        if (shelf is Shelf.Lists<*>) shelf.list.filterIsInstance<Track>() else emptyList()
+                    }
+                }
+                else -> emptyList()
+            }
+            graph.player.playQueue(tracks, extensionId, null)
+        }.onFailure { graph.logger.warn("Browse", "Could not load selected media", it) }
     }
 }

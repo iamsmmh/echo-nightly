@@ -78,6 +78,9 @@ class LocalLibraryRepository(
     private val _tracks = MutableStateFlow<List<LocalTrackEntry>>(emptyList())
     val tracks: StateFlow<List<LocalTrackEntry>> = _tracks.asStateFlow()
 
+    var revision: Long = 0
+        private set
+
     init {
         load()
     }
@@ -182,7 +185,8 @@ class LocalLibraryRepository(
             albumOrderNumber = entry.trackNumber?.toLong(),
             extras = mapOf(
                 "localPath" to entry.path,
-                "mimeType" to (entry.mimeType ?: "")
+                "mimeType" to (entry.mimeType ?: ""),
+                dev.brahmkshatriya.echo.player.domain.search.SearchProvenance.PROVIDER_ID to "local-offline"
             )
         )
     }
@@ -203,8 +207,9 @@ class LocalLibraryRepository(
     }
 
     private fun persistAndPublish(list: List<LocalTrackEntry>) {
-        _tracks.value = list
         store.putString(KEY_INDEX, json.encodeToString(trackListSerializer, list))
+        _tracks.value = list
+        revision++
     }
 
     private companion object {
@@ -221,9 +226,9 @@ class LocalLibraryRepository(
 }
 
 /** Groups entries into albums, ignoring case and blank albums. */
-internal fun groupAlbums(entries: List<LocalTrackEntry>): List<AlbumGroup> {
+fun groupAlbums(entries: List<LocalTrackEntry>): List<AlbumGroup> {
     return entries
-        .groupBy { (it.album ?: it.fileName).lowercase().trim() }
+        .groupBy { (it.album ?: it.fileName).lowercase().trim() to (it.albumArtist ?: it.artist).lowercase().trim() }
         .map { (_, groupTracks) ->
             val sorted = sortAlbumTracks(groupTracks)
             AlbumGroup(
@@ -237,7 +242,7 @@ internal fun groupAlbums(entries: List<LocalTrackEntry>): List<AlbumGroup> {
 }
 
 /** Groups entries into artists. */
-internal fun groupArtists(entries: List<LocalTrackEntry>): List<ArtistGroup> {
+fun groupArtists(entries: List<LocalTrackEntry>): List<ArtistGroup> {
     return entries
         .groupBy { it.artist.lowercase().trim() }
         .map { (name, groupTracks) ->

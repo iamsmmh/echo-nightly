@@ -54,11 +54,17 @@ private val LightColors = lightColorScheme(
 @Composable
 fun EchoTheme(
     useDarkThemeOverride: Boolean? = null,
+    amoled: Boolean = false,
+    dynamic: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val dark = useDarkThemeOverride ?: isSystemInDarkTheme()
+    val palette = (if (dynamic) platformColorScheme(dark) else null) ?: if (dark) DarkColors else LightColors
     MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
+        colorScheme = if (dark && amoled) palette.copy(background = Color.Black, surface = Color.Black, surfaceContainer = Color.Black) else palette,
         content = content
     )
 }
+
+@Composable
+expect fun platformColorScheme(dark: Boolean): androidx.compose.material3.ColorScheme?

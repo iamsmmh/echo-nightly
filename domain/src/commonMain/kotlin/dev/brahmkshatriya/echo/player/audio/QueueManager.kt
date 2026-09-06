@@ -73,8 +73,23 @@ class QueueManager(
         if (_state.value.shuffleEnabled) {
             applyShuffleFrom(original.firstOrNull { it.id == currentId })
         }
-        publish(currentId = currentId)
+        publish(currentId = original.firstOrNull { it.id == currentId }?.id ?: original.firstOrNull()?.id)
         return _state.value.currentId?.let { id -> _state.value.items.firstOrNull { it.id == id } }
+    }
+
+    /** Restores both orders atomically without reshuffling or losing repeat mode. */
+    suspend fun restore(snapshot: QueueSnapshot): QueueItem? = mutex.withLock {
+        val effective = snapshot.items.distinctBy { it.id }
+        val byId = effective.associateBy { it.id }
+        val savedOriginal = snapshot.originalItems.mapNotNull { byId[it.id] }.distinctBy { it.id }
+        original.clear()
+        original.addAll(savedOriginal + effective.filterNot { item -> savedOriginal.any { it.id == item.id } })
+        shuffled.clear()
+        if (snapshot.shuffleEnabled) shuffled.addAll(effective)
+        shuffleSeed = snapshot.shuffleSeed
+        _state.value = snapshot.copy(repeatMode = snapshot.repeatMode)
+        publish(snapshot.shuffleEnabled, effective.firstOrNull { it.id == snapshot.currentId }?.id ?: effective.firstOrNull()?.id)
+        current
     }
 
     suspend fun getCurrent(): QueueItem? = mutex.withLock { current }
@@ -188,7 +203,7 @@ class QueueManager(
         if (snapshot.currentId == itemId) {
             val list = effectiveItems()
             val next = if (list.isEmpty()) null else list[removedIndex.coerceIn(0, list.lastIndex)]
-            _state.value = snapshot.copy(items = list, currentId = next?.id)
+            _state.value = snapshot.copy(items = list, currentId = next?.id, originalItems = original.toList())
             return next
         }
         publish()
@@ -290,7 +305,8 @@ class QueueManager(
             items = if (enabled) shuffled.toList() else original.toList(),
             currentId = currentId,
             shuffleEnabled = enabled,
-            shuffleSeed = shuffleSeed
+            shuffleSeed = shuffleSeed,
+            originalItems = original.toList()
         )
     }
 }

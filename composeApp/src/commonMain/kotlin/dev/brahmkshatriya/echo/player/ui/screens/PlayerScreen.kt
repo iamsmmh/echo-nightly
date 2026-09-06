@@ -85,6 +85,7 @@ fun PlayerScreen(
 
     var dragPosition by remember { mutableStateOf<Float?>(null) }
     var speedMenu by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
 
     val background = Brush.verticalGradient(
         colors = listOf(
@@ -119,6 +120,7 @@ fun PlayerScreen(
                         }
                     )
                     TransportControls(graph, playback, onOpenQueue, speedMenu = { speedMenu = true })
+                    TextButton(onClick = { showLyrics = true }) { Text("Lyrics") }
                 }
             }
         } else {
@@ -141,12 +143,14 @@ fun PlayerScreen(
                 ArtworkBlock(graph, playback, Modifier.fillMaxWidth(0.85f))
                 Spacer(Modifier.height(24.dp))
                 TrackInfo(playback)
-                SeekBar(playback, dragPosition, onDrag = { dragPosition = it }, onSeek = { graph.player.seekTo(it.toLong()) })
+                SeekBar(playback, dragPosition, onDrag = { dragPosition = it }, onSeek = { graph.player.seekTo((it * playback.durationMs).toLong()) })
                 TransportControls(graph, playback, onOpenQueue, speedMenu = { speedMenu = true })
+                    TextButton(onClick = { showLyrics = true }) { Text("Lyrics") }
                 Spacer(Modifier.height(24.dp))
             }
         }
 
+        if (showLyrics) LyricsScreen(graph) { showLyrics = false }
         if (speedMenu) {
             AlertDialog(
                 onDismissRequest = { speedMenu = false },

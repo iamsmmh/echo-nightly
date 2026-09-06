@@ -51,6 +51,7 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -94,9 +95,24 @@ class PlayerService : MediaLibraryService() {
         super.onCreate()
         setListener(MediaSessionServiceListener(this, getPendingIntent(this)))
 
-        val player = ShufflePlayer(exoPlayer)
+        val local = ShufflePlayer(exoPlayer)
+        val loader = dev.brahmkshatriya.echo.playback.source.StreamableLoader(app, extensions.music, downloadFlow)
+        val resolveForCast: suspend (MediaItem) -> MediaItem = { item ->
+            val (loaded, server) = loader.load(item)
+            val source = dev.brahmkshatriya.echo.player.core.casting.CastSourcePolicy.select(server.getOrThrow().sources,
+                dev.brahmkshatriya.echo.playback.MediaItemUtils.run { loaded.sourceIndex })
+                ?: throw IllegalArgumentException("This track requires playback on the phone")
+            val cover = dev.brahmkshatriya.echo.playback.MediaItemUtils.run { loaded.track.cover }
+                as? dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
+            val artwork = cover?.request?.takeIf { it.headers.isEmpty() &&
+                (it.url.startsWith("https://") || it.url.startsWith("http://")) }?.url?.let(android.net.Uri::parse)
+            loaded.buildUpon().setUri(source.request.url).setDrmConfiguration(null).setSubtitleConfigurations(emptyList())
+                .setMediaMetadata(loaded.mediaMetadata.buildUpon().setArtworkUri(artwork).build())
+                .setMimeType(dev.brahmkshatriya.echo.player.core.casting.CastSourcePolicy.contentType(source.request.url)).build()
+        }
+        val player = dev.brahmkshatriya.echo.playback.cast.CastRoutingPlayer(local, scope, resolveForCast)
         scope.launch(Dispatchers.Main) {
-            mediaChangeFlow.collect { (o, n) -> player.onMediaItemChanged(o, n) }
+            mediaChangeFlow.collect { (o, n) -> local.onMediaItemChanged(o, n) }
         }
 
         val callback = PlayerCallback(
@@ -144,8 +160,9 @@ class PlayerService : MediaLibraryService() {
         recoverPlaybackAfterCrash(session)
 
         // Phase 7 (ecosystem): Wear OS + Chromecast bridges.
-        wearBridge = WearBridge(this, exoPlayer, scope).also { it.start() }
-        castBridge = ChromecastBridge(this, exoPlayer, app, scope).also { it.start() }
+        wearBridge = WearBridge(this, player, scope).also { it.start() }
+        castBridge = ChromecastBridge(this, player, app, scope, resolveForCast,
+            restoreQueue = { recoverPlaylist(app, downloadFlow.value, withClear = false).first }).also { it.start() }
     }
 
     /**
@@ -164,7 +181,7 @@ class PlayerService : MediaLibraryService() {
                 PlaybackRecoveryStore.clear(this@PlayerService)
                 return@launch
             }
-            if (session.controllerCount > 0 || exoPlayer.mediaItemCount > 0) return@launch
+            if (session.connectedControllers.isNotEmpty() || exoPlayer.mediaItemCount > 0) return@launch
             val (items, index, position) = runCatching {
                 recoverPlaylist(app, downloader.flow.value, withClear = false)
             }.getOrElse {
@@ -207,6 +224,8 @@ class PlayerService : MediaLibraryService() {
         wearBridge = null
         castBridge?.stop()
         castBridge = null
+        app.settings.unregisterOnSharedPreferenceChangeListener(listener)
+        scope.cancel()
         mediaSession?.run {
             player.release()
             release()

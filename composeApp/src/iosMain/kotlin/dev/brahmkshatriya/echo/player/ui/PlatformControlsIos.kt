@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package dev.brahmkshatriya.echo.player.ui
 
 import androidx.compose.foundation.layout.size
@@ -8,7 +10,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import platform.AVKit.AVRoutePickerView
-import platform.UIKit.UIColor
+import platform.UIKit.*
 
 /**
  * iOS: the native AirPlay route picker. Tapping opens the system sheet with
@@ -21,7 +23,7 @@ actual fun MediaRouteButton() {
     UIKitView(
         factory = {
             AVRoutePickerView().apply {
-                isPlayAndTVModeButton = true // show just the AirPlay glyph
+                prioritizesVideoDevices = false
                 activeTintColor = UIColor.systemBlueColor
                 tintColor = UIColor.labelColor
             }

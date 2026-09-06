@@ -43,7 +43,11 @@ class AndroidAudioPlayer(
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            updateState { it.copy(isPlaying = isPlaying) }
+            updateState { it.copy(isPlaying = isPlaying, playWhenReady = exoPlayer?.playWhenReady == true) }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            updateState { it.copy(playWhenReady = playWhenReady) }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -60,7 +64,7 @@ class AndroidAudioPlayer(
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             logger.error(TAG, "ExoPlayer error: ${error.errorCodeName}", error)
-            updateState { it.copy(isPlaying = false) }
+            updateState { it.copy(isPlaying = false, playWhenReady = false, isBuffering = false, error = error.errorCodeName) }
         }
     }
 
@@ -71,30 +75,26 @@ class AndroidAudioPlayer(
         exoPlayer?.let { return it }
         val context = EchoPlayerAndroid.appContext
         val player = ExoPlayer.Builder(context).build()
+        player.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
+        player.setHandleAudioBecomingNoisy(true)
         player.addListener(listener)
         exoPlayer = player
         return player
     }
 
     override fun prepare(request: EngineRequest) {
-        scope.launch {
-            currentRequest = request
-            val player = obtainPlayer()
-            try {
-                val mediaItem = MediaItem.Builder()
-                    .setUri(request.url)
-                    .setCustomCacheKey(null)
-                    .build()
-                player.setMediaItem(mediaItem, request.startPositionMs)
-                player.volume = volume
-                player.setPlaybackSpeed(speed)
-                player.prepare()
-                engineState.value = EngineState(positionMs = request.startPositionMs, speed = speed)
-            } catch (e: Throwable) {
-                logger.error(TAG, "Prepare failed: ${e.message}", e)
-                engineState.value = EngineState(speed = speed)
-            }
-        }
+        currentRequest = request
+        val player = obtainPlayer()
+        val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(request.headers)
+        val dataFactory = androidx.media3.datasource.DefaultDataSource.Factory(EchoPlayerAndroid.appContext, httpFactory)
+        val sourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataFactory)
+        val mediaItem = MediaItem.Builder().setUri(request.url).setMimeType(request.mimeType).build()
+        player.setMediaSource(sourceFactory.createMediaSource(mediaItem), request.startPositionMs.coerceAtLeast(0))
+        player.volume = volume
+        player.setPlaybackSpeed(speed)
+        player.prepare()
+        engineState.value = EngineState(positionMs = request.startPositionMs.coerceAtLeast(0), speed = speed)
     }
 
     override fun play() {
@@ -158,7 +158,9 @@ class AndroidAudioPlayer(
                         positionMs = player.currentPosition.coerceAtLeast(0),
                         bufferedMs = player.bufferedPosition.coerceAtLeast(0),
                         durationMs = playerDuration().takeIf { d -> d > 0 } ?: it.durationMs,
-                        isPlaying = player.isPlaying
+                        isPlaying = player.isPlaying,
+                        playWhenReady = player.playWhenReady,
+                        suppressed = player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
                     )
                 }
             }

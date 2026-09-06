@@ -55,13 +55,14 @@ fun SearchScreen(graph: AppGraph, onOpenPlayer: () -> Unit) {
     LaunchedEffect(query) {
         if (query.isBlank()) {
             shelves = emptyList()
+            loading = false
             return@LaunchedEffect
         }
         loading = true
         delay(250) // debounce
-        graph.search.search(query)
-            .onSuccess { shelves = it }
-        loading = false
+        try {
+            graph.search.search(query).onSuccess { shelves = it }
+        } finally { loading = false }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -128,9 +129,13 @@ fun TrackRow(graph: AppGraph, track: Track, playContext: List<Track>, onOpenPlay
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                val extensionId = graph.extensions.activeExtensionId
-                    ?: dev.brahmkshatriya.echo.player.extensions.local.LocalExtensionClient.ID
-                graph.player.playQueue(playContext, extensionId, track.id)
+                val items = playContext.map { candidate ->
+                    dev.brahmkshatriya.echo.player.audio.QueueItem(
+                        dev.brahmkshatriya.echo.player.audio.newQueueId(), candidate, graph.providerIdFor(candidate)
+                    )
+                }
+                val selected = items.firstOrNull { it.track.id == track.id && it.extensionId == graph.providerIdFor(track) }
+                graph.player.playItems(items, selected?.id)
                 onOpenPlayer()
             }
             .padding(horizontal = 16.dp, vertical = 8.dp),

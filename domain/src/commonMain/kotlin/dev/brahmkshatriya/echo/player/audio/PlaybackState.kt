@@ -23,7 +23,10 @@ data class PlaybackState(
     val queue: List<QueueItem> = emptyList(),
     val currentId: String? = null,
     /** A short, user facing error message; null when there is no error. */
-    val error: String? = null
+    val error: String? = null,
+    /** Added in schema 2; legacy sessions use the effective queue as the original order. */
+    val originalQueue: List<QueueItem> = emptyList(),
+    val schemaVersion: Int = 2
 ) {
     val progress: Float
         get() = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
@@ -57,7 +60,11 @@ data class NowPlayingInfo(
     val playbackRate: Float,
     val isPlaying: Boolean,
     val artworkRequestUrl: String? = null,
-    val artworkHeaders: Map<String, String> = emptyMap()
+    val artworkHeaders: Map<String, String> = emptyMap(),
+    val queueIndex: Int = 0,
+    val queueCount: Int = 1,
+    val canGoNext: Boolean = true,
+    val canGoPrevious: Boolean = true
 )
 
 /**
