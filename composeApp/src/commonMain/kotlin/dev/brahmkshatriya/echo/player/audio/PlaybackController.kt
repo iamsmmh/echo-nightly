@@ -105,6 +105,33 @@ class PlaybackController(
     }
 
     /** Restores the last persisted session (paused). */
+    // ------------------------------------------- RemoteCommandListener
+    // (lock screen / Control Centre / notification commands)
+
+    override fun onPlay() {
+        if (!_state.value.isPlaying) playPause()
+    }
+
+    override fun onPause() {
+        if (_state.value.isPlaying) playPause()
+    }
+
+    override fun onTogglePlayPause() = playPause()
+
+    override fun onNext() = next(userInitiated = true)
+
+    override fun onPrevious() = previous()
+
+    override fun onSeekTo(positionMs: Long) = seekTo(positionMs)
+
+    override fun onSkipForward() {
+        seekTo(_state.value.positionMs + SKIP_COMMAND_MS)
+    }
+
+    override fun onSkipBackward() {
+        seekTo((_state.value.positionMs - SKIP_COMMAND_MS).coerceAtLeast(0))
+    }
+
     fun restoreSession() {
         val restored = persister.restore() ?: return
         if (restored.queue.isEmpty()) return
@@ -360,3 +387,5 @@ class KeyValuePlaybackPersister(
         const val KEY_QUEUE = "echo.playback.session"
     }
 }
+
+private const val SKIP_COMMAND_MS = 30_000L

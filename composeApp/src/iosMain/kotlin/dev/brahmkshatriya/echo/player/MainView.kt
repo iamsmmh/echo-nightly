@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import platform.AVFoundation.AVAudioSession
 import platform.Foundation.NSLog
 import platform.UIKit.UIViewController
 
@@ -101,7 +102,7 @@ object EchoIosBridge {
 
     /** The current AVAudioSession category (used by the iOS tests). */
     fun audioSessionCategory(): String =
-        platform.AVFoundation.AVAudioSession.sharedInstance().category
+        AVAudioSession.sharedInstance().category.toString()
 }
 
 /* iOS UI actuals (document picker, artwork decoder) live in player/ui/IosUiActuals.kt */

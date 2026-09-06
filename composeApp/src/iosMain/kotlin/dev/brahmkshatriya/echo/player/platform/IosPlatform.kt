@@ -1,20 +1,17 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package dev.brahmkshatriya.echo.player.platform
 
 import dev.brahmkshatriya.echo.common.helpers.toByteArray
 import dev.brahmkshatriya.echo.common.helpers.toNSData
 import dev.brahmkshatriya.echo.common.models.EchoFile
+import dev.brahmkshatriya.echo.common.models.resolve
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.domain.sanitizeUrl
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.AVFoundation.AVURLAsset
-import platform.AVFoundation.AVMetadataCommonKeyAlbum
-import platform.AVFoundation.AVMetadataCommonKeyAlbumArtist
-import platform.AVFoundation.AVMetadataCommonKeyArtist
-import platform.AVFoundation.AVMetadataCommonKeyArtwork
-import platform.AVFoundation.AVMetadataCommonKeyCreationDate
-import platform.AVFoundation.AVMetadataCommonKeyTitle
+import platform.AVFoundation.*
 import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSMutableURLRequest
@@ -26,8 +23,6 @@ import platform.Foundation.NSURLSessionTaskDelegateProtocol
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.dataTaskWithRequest
 import platform.Foundation.downloadTaskWithRequest
-import platform.Foundation.httpBody
-import platform.Foundation.httpMethod
 import platform.darwin.NSObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException

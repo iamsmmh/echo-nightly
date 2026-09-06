@@ -1,5 +1,8 @@
 package dev.brahmkshatriya.echo.player.download
 
+import dev.brahmkshatriya.echo.common.models.resolve
+import dev.brahmkshatriya.echo.common.models.bytes
+
 import dev.brahmkshatriya.echo.common.models.EchoFile
 import dev.brahmkshatriya.echo.common.models.Track
 import dev.brahmkshatriya.echo.player.domain.EchoError
@@ -357,7 +360,7 @@ class DownloadRepository(
         val ACTIVE_OR_DONE = setOf(DownloadState.QUEUED, DownloadState.DOWNLOADING, DownloadState.PAUSED, DownloadState.COMPLETED)
         val PAUSABLE = setOf(DownloadState.QUEUED, DownloadState.DOWNLOADING)
 
-        fun now(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        fun now(): Long = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
     }
 }
 

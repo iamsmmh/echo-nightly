@@ -40,7 +40,7 @@ fun interface QueueIdGenerator {
 class TimeBasedQueueIdGenerator : QueueIdGenerator {
     private var counter = 0L
     override fun next(): String =
-        "qi-${kotlinx.datetime.Clock.System.now().toEpochMilliseconds()}-${counter++}"
+        "qi-${dev.brahmkshatriya.echo.player.domain.nowEpochMs()}-${counter++}"
 }
 
 /** Generates a random unique id usable from common code. */

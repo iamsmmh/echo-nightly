@@ -14,7 +14,7 @@ import platform.darwin.NSObject
 actual fun platformOpenFilePicker() {
     val picker = UIDocumentPickerViewController(
         documentTypes = listOf("public.audio"),
-        inMode = UIDocumentPickerModeImport
+        inMode = UIDocumentPickerMode.Import
     )
     picker.allowsMultipleSelection = true
     picker.delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
@@ -38,9 +38,9 @@ private fun rootViewController(): UIViewController? {
     application.keyWindow?.let { return it.rootViewController }
     val scene = application.connectedScenes
         .filterIsInstance<UIWindowScene>()
-        .firstOrNull { it.activationState == UIWindowSceneActivationStateForegroundActive }
-        ?: return null
-    return scene.windows.firstOrNull { it.isKeyWindow }?.rootViewController
+        .firstOrNull() ?: return null
+    // UIWindowScene.keyWindow is available on iOS 15+
+    return scene.keyWindow?.rootViewController
 }
 
 actual fun createArtworkDecoder(): ArtworkDecoder = IosArtworkDecoder()

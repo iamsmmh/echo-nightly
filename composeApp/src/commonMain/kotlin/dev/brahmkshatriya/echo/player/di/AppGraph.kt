@@ -35,7 +35,7 @@ import kotlinx.serialization.json.Json
 class AppGraph(
     val scope: CoroutineScope,
     val logger: EchoLogger,
-    engine: PlayerEngine,
+    private val engine: PlayerEngine,
     storeName: String = "echo_player"
 ) {
 
@@ -80,9 +80,9 @@ class AppGraph(
 
     val extensions: ExtensionRuntime by lazy {
         ExtensionRuntime(
-            factories = listOf<BuiltinExtensionFactory>(
-                { createLocalExtension(library) },
-                { createSubsonicExtension(subsonicApi, settings) }
+            factories = listOf(
+                BuiltinExtensionFactory { createLocalExtension(library) },
+                BuiltinExtensionFactory { createSubsonicExtension(subsonicApi, settings) }
             ),
             settings = settings,
             logger = logger

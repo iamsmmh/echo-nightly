@@ -7,12 +7,13 @@ import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.LibraryFeedClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
-import dev.brahmkshatriya.echo.common.helpers.Feed
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.Album
 import dev.brahmkshatriya.echo.common.models.Artist
 import dev.brahmkshatriya.echo.common.models.EchoMediaItem
-import dev.brahmkshatriya.echo.common.models.Feed as FeedModel
+import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.models.Shelf
 import dev.brahmkshatriya.echo.common.models.Streamable
 import dev.brahmkshatriya.echo.common.models.Streamable.Media.Companion.toMedia
@@ -45,7 +46,7 @@ class LocalExtensionClient(
 
     // ------------------------------------------------------------ feed
 
-    override suspend fun loadHomeFeed(): FeedModel<Shelf> {
+    override suspend fun loadHomeFeed(): Feed<Shelf> {
         val tracks = library.tracks.first()
         val recent = tracks.sortedByDescending { it.addedAtMs }.take(20)
         return listOf(
@@ -64,7 +65,7 @@ class LocalExtensionClient(
         ).toShelves().toFeed()
     }
 
-    override suspend fun loadLibraryFeed(): FeedModel<Shelf> {
+    override suspend fun loadLibraryFeed(): Feed<Shelf> {
         val tracks = library.tracks.first()
         return listOf(
             Shelf.Lists.Items(
@@ -88,7 +89,7 @@ class LocalExtensionClient(
         ).toShelves().toFeed()
     }
 
-    override suspend fun loadSearchFeed(query: String): FeedModel<Shelf> {
+    override suspend fun loadSearchFeed(query: String): Feed<Shelf> {
         val results = library.search(query)
         return listOf(
             Shelf.Lists.Items(
@@ -113,7 +114,7 @@ class LocalExtensionClient(
     override suspend fun loadAlbum(album: Album): Album {
         val group = library.albums().firstOrNull {
             it.title.equals(album.title, ignoreCase = true) || it.title == album.title
-        } ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException("Album not found")
+        } ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException.NotSupported("Album not found")
         return group.toAlbumItem()
     }
 
@@ -127,7 +128,7 @@ class LocalExtensionClient(
 
     override suspend fun loadArtist(artist: Artist): Artist {
         val group = library.artists().firstOrNull { it.name == artist.name }
-            ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException("Artist not found")
+            ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException.NotSupported("Artist not found")
         return group.toArtistItem()
     }
 
@@ -156,7 +157,7 @@ class LocalExtensionClient(
     override suspend fun loadStreamableMedia(streamable: Streamable, isDownload: Boolean): Streamable.Media {
         val path = streamable.extras["path"]
             ?: streamable.id.takeIf { it.startsWith("/") }
-            ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException("No local path for streamable")
+            ?: throw dev.brahmkshatriya.echo.common.helpers.ClientException.NotSupported("No local path for streamable")
         val url = if (path.startsWith("/")) "file://$path" else path
         return url.toSource().let { it.toMedia() }
     }
@@ -207,8 +208,8 @@ class LocalExtensionClient(
 
     private fun List<Shelf>.toShelves(): List<Shelf> = this
 
-    private fun List<Shelf>.toFeed(): FeedModel<Shelf> =
-        FeedModel(listOf()) { PagedData.Single { this }.toFeedData() }
+    private fun List<Shelf>.toFeed(): Feed<Shelf> =
+        Feed(listOf()) { PagedData.Single { this }.toFeedData() }
 
     companion object {
         const val ID = "local-offline"

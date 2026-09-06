@@ -129,10 +129,10 @@ class PlaylistRepository(private val store: KeyValueStore) {
     }
 
     private fun newId(): String =
-        kotlinx.datetime.Clock.System.now().toEpochMilliseconds().toString(16) +
+        dev.brahmkshatriya.echo.player.domain.nowEpochMs().toString(16) +
             "-" + kotlin.random.Random.nextInt(0xFFFF).toString(16)
 
-    private fun now(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+    private fun now(): Long = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
 
     private companion object {
         const val KEY = "echo.player.playlists"
@@ -207,7 +207,7 @@ class HistoryRepository(private val store: KeyValueStore) {
         store.remove(KEY)
     }
 
-    private fun now(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+    private fun now(): Long = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
 
     private companion object {
         const val KEY = "echo.player.history"

@@ -1,4 +1,5 @@
 package dev.brahmkshatriya.echo.player.ui.screens
+import dev.brahmkshatriya.echo.player.ui.ArtworkImage
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box

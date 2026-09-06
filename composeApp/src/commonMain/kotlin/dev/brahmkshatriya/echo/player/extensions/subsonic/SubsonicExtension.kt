@@ -7,8 +7,10 @@ import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.helpers.ClientException
-import dev.brahmkshatriya.echo.common.helpers.Feed
 import dev.brahmkshatriya.echo.common.helpers.PagedData
+import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.models.Album
 import dev.brahmkshatriya.echo.common.models.Artist
 import dev.brahmkshatriya.echo.common.models.EchoMediaItem
@@ -39,7 +41,7 @@ class SubsonicExtensionClient(
 
     override suspend fun onExtensionSelected() {
         if (!api.isConfigured) {
-            throw ClientException("Configure your Subsonic server in Settings first")
+            throw ClientException.NotSupported("Subsonic server is not configured")
         }
     }
 
@@ -61,8 +63,7 @@ class SubsonicExtensionClient(
         artists = artist?.let { listOf(Artist(id = artistId ?: it, name = it)) } ?: emptyList(),
         trackCount = songCount?.toLong(),
         duration = duration?.let { it * 1000L },
-        releaseDate = year?.let { dev.brahmkshatriya.echo.common.models.Date(it) },
-        genres = listOfNotNull(genre)
+        releaseDate = year?.let { dev.brahmkshatriya.echo.common.models.Date(it) }
     )
 
     private fun AlbumWithSongsDto.toItem() = Album(
@@ -72,8 +73,7 @@ class SubsonicExtensionClient(
         artists = artist?.let { listOf(Artist(id = artistId ?: it, name = it)) } ?: emptyList(),
         trackCount = song?.size?.toLong(),
         duration = song?.sumOf { it.duration ?: 0 }?.let { it * 1000L },
-        releaseDate = year?.let { dev.brahmkshatriya.echo.common.models.Date(it) },
-        genres = listOfNotNull(genre)
+        releaseDate = year?.let { dev.brahmkshatriya.echo.common.models.Date(it) }
     )
 
     private fun ArtistWithAlbumsDto.toItem() = Artist(

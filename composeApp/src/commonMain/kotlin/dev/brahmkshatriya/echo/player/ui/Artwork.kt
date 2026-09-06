@@ -1,5 +1,7 @@
 package dev.brahmkshatriya.echo.player.ui
 
+import dev.brahmkshatriya.echo.common.models.bytes
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,16 +44,23 @@ expect fun createArtworkDecoder(): ArtworkDecoder
  * (keeps at most [MAX_ENTRIES] entries).
  */
 object ArtworkCache {
-    private val cache = object : LinkedHashMap<String, ImageBitmap>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>): Boolean {
-            return size > MAX_ENTRIES
-        }
-    }
+    private const val MAX_ENTRIES = 64
 
-    fun get(key: String): ImageBitmap? = synchronized(cache) { cache[key] }
+    // LinkedHashMap is final in common stdlib, so this is a simple bounded
+    // map that evicts the oldest insertion once full (artwork cache only).
+    private val cache = LinkedHashMap<String, ImageBitmap>()
+
+    fun get(key: String): ImageBitmap? = cache[key]
 
     fun put(key: String, bitmap: ImageBitmap) {
-        synchronized(cache) { cache[key] = bitmap }
+        if (cache.size >= MAX_ENTRIES) {
+            val iterator = cache.entries.iterator()
+            if (iterator.hasNext()) {
+                iterator.next()
+                iterator.remove()
+            }
+        }
+        cache[key] = bitmap
     }
 }
 

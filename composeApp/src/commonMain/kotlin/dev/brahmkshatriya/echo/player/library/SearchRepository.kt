@@ -1,6 +1,8 @@
 package dev.brahmkshatriya.echo.player.library
 
-import dev.brahmkshatriya.echo.common.helpers.Feed
+import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
+import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.loadAll
 import dev.brahmkshatriya.echo.common.models.Shelf
 import dev.brahmkshatriya.echo.common.models.Track
 import dev.brahmkshatriya.echo.common.clients.SearchFeedClient

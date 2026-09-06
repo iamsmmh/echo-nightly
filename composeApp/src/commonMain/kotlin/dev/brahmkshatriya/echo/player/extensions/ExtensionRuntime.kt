@@ -32,7 +32,7 @@ fun builtinMetadata(
 ) = Metadata(
     className = "builtin",
     path = "builtin",
-    importType = ImportType.BUILT_IN,
+    importType = ImportType.BuiltIn,
     type = type,
     id = id,
     name = name,
@@ -137,7 +137,7 @@ class ExtensionRuntime(
         val extension = activeExtension()
             ?: return Result.failure(EchoError.Extension("No music extension selected"))
         return runCatching {
-            val client = extension.instance.value()
+            val client = extension.instance.value().getOrNull()
                 ?: throw EchoError.Extension("Could not initialize ${extension.name}", extension.id)
             try {
                 block(client)

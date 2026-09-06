@@ -1,5 +1,8 @@
 package dev.brahmkshatriya.echo.player.library
 
+import dev.brahmkshatriya.echo.common.models.resolve
+import dev.brahmkshatriya.echo.common.models.write
+
 import dev.brahmkshatriya.echo.common.models.Album
 import dev.brahmkshatriya.echo.common.models.Artist
 import dev.brahmkshatriya.echo.common.models.EchoFile
@@ -213,7 +216,7 @@ class LocalLibraryRepository(
             path.hashCode().toUInt().toString(16) + "-" + path.length.toString(16) + "-" +
                 (path.substringAfterLast('/').hashCode().toUInt().toString(16))
 
-        fun now(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        fun now(): Long = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
     }
 }
 

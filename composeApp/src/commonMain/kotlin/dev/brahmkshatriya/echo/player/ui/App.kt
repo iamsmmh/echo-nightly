@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalConfiguration
 import dev.brahmkshatriya.echo.player.di.AppGraph
 import dev.brahmkshatriya.echo.player.ui.screens.ExtensionsScreen
 import dev.brahmkshatriya.echo.player.ui.screens.HomeScreen
@@ -102,13 +101,15 @@ fun EchoApp(graph: AppGraph) {
             graph.player.restoreSession()
         }
 
-        val configuration = LocalConfiguration.current
-        val compact = configuration.screenWidthDp < 600
+        // Compose Multiplatform has no LocalConfiguration in common code —
+        // measure the window instead.
+        androidx.compose.foundation.layout.BoxWithConstraints {
+            val compact = maxWidth < 600.dp
 
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbar) },
-            bottomBar = {
-                if (compact) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
+                bottomBar = {
+                    if (compact) {
                     Column {
                         MiniPlayer(
                             graph = graph,
@@ -142,6 +143,7 @@ fun EchoApp(graph: AppGraph) {
         }
         if (showQueue) {
             QueueScreen(graph = graph, onDismiss = { showQueue = false })
+        }
         }
     }
 }

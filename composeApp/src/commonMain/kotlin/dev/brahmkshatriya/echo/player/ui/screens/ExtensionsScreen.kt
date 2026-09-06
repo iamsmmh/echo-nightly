@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ExtensionsScreen(graph: AppGraph) {
     val extensions by graph.extensions.extensions.collectAsState()
-    val settings by remember { mutableStateOf(graph.settings.settings) }
+    var settings by remember { mutableStateOf(graph.settings.settings) }
     var pingResult by remember { mutableStateOf<String?>(null) }
     var pinging by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()

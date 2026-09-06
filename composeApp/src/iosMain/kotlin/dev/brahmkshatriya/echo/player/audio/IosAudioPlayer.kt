@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package dev.brahmkshatriya.echo.player.audio
 
 import androidx.compose.ui.graphics.ImageBitmap
@@ -7,6 +9,8 @@ import dev.brahmkshatriya.echo.common.helpers.toNSData
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.ui.ArtworkDecoder
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.CoreMedia.timeRangeValue
+import platform.AVFoundation.seekToTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,12 +105,13 @@ class IosAudioPlayer(
 
     private fun observeInterruptions() {
         notificationObservers += NSNotificationCenter.defaultCenter().addObserverForName(
-            name = AVAudioSessionInterruptionNotification,
+            name = AVAudioSession.interruptionNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue()
         ) { notification ->
-            val userInfo = notification.userInfo
-            val type = (userInfo?.get(AVAudioSessionInterruptionTypeKey) as? NSNumber)?.longValue
+            val userInfo = notification?.userInfo
+            // userInfo key literals are the stable public ABI constants
+            val type = (userInfo?.get("AVAudioSessionInterruptionType") as? NSNumber)?.longValue
             when (type) {
                 INTERRUPTION_TYPE_BEGAN -> {
                     wasPlayingBeforeInterruption = engineState.value.isPlaying
@@ -115,7 +120,7 @@ class IosAudioPlayer(
                     pushNowPlaying()
                 }
                 INTERRUPTION_TYPE_ENDED -> {
-                    val options = (userInfo?.get(AVAudioSessionInterruptionOptionKey) as? NSNumber)?.longValue ?: 0
+                    val options = (userInfo?.get("AVAudioSessionInterruptionOption") as? NSNumber)?.longValue ?: 0
                     if (options and INTERRUPTION_OPTION_SHOULD_RESUME != 0L && wasPlayingBeforeInterruption) {
                         activateAudioSession()
                         play()
@@ -127,11 +132,11 @@ class IosAudioPlayer(
 
     private fun observeRouteChanges() {
         notificationObservers += NSNotificationCenter.defaultCenter().addObserverForName(
-            name = AVAudioSessionRouteChangeNotification,
+            name = AVAudioSession.routeChangeNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue()
         ) { notification ->
-            val reason = (notification.userInfo?.get(AVAudioSessionRouteChangeReasonKey) as? NSNumber)?.longValue
+            val reason = (notification?.userInfo?.get("AVAudioSessionRouteChangeReason") as? NSNumber)?.longValue
             if (reason == ROUTE_REASON_OLD_DEVICE_UNAVAILABLE) {
                 // Headphones/Bluetooth disconnected
                 if (pauseOnRouteLoss()) {
@@ -196,7 +201,7 @@ class IosAudioPlayer(
                 val headerOptions = mapOf(
                     "AVURLAssetHTTPHeaderFieldsKey" to
                         request.headers.entries.map { (key, value) -> "$key: $value" }
-                ) as Map<AnyObject, *>
+                ) as Map<kotlin.AnyObject, *>
                 AVPlayerItem(
                     asset = AVURLAsset(
                         uRL = url,
@@ -329,8 +334,10 @@ class IosAudioPlayer(
     }
 
     /** CMTime has no `.seconds` member in Kotlin — compute from value/timescale. */
-    private fun cmSeconds(time: platform.CoreMedia.CMTime): Double =
-        if (time.timescale == 0) Double.NaN else time.value.toDouble() / time.timescale
+    private fun cmSeconds(time: kotlinx.cinterop.CValue<platform.CoreMedia.CMTime>): Double =
+        time.useContents {
+            if (timescale == 0) Double.NaN else value.toDouble() / timescale
+        }
 
     private fun secondsToMs(seconds: Double): Long =
         if (seconds.isNaN() || seconds < 0) 0 else (seconds * 1000).toLong()
@@ -354,18 +361,20 @@ class IosAudioPlayer(
             return
         }
         val state = engineState.value
-        val map = mutableMapOf<AnyObject, Any?>(
-            MPMediaItemPropertyTitle to info.title,
-            MPMediaItemPropertyArtist to info.artist,
-            MPMediaItemPropertyPlaybackDuration to (state.durationMs / 1000.0),
-            MPNowPlayingInfoPropertyElapsedPlaybackTime to (state.positionMs / 1000.0),
-            MPNowPlayingInfoPropertyPlaybackRate to (if (state.isPlaying) state.speed.toDouble() else 0.0)
-        )
-        info.album?.let { map[MPMediaItemPropertyAlbumTitle] = it }
+        val map = platform.Foundation.NSMutableDictionary()
+        map.setObject(info.title, forKey = MPMediaItemPropertyTitle)
+        map.setObject(info.artist, forKey = MPMediaItemPropertyArtist)
+        map.setObject(state.durationMs / 1000.0, forKey = MPMediaItemPropertyPlaybackDuration)
+        map.setObject(state.positionMs / 1000.0, forKey = MPNowPlayingInfoPropertyElapsedPlaybackTime)
+        map.setObject(if (state.isPlaying) state.speed.toDouble() else 0.0, forKey = MPNowPlayingInfoPropertyPlaybackRate)
+        info.album?.let { map.setObject(it, forKey = MPMediaItemPropertyAlbumTitle) }
         artworkImage?.let { image ->
-            map[MPMediaItemPropertyArtwork] = platform.MediaPlayer.MPMediaItemArtwork(
-                boundsSize = CGSizeMake(600.0, 600.0)
-            ) { _ -> image }
+            map.setObject(
+                platform.MediaPlayer.MPMediaItemArtwork(
+                    boundsSize = CGSizeMake(600.0, 600.0)
+                ) { _ -> image },
+                forKey = MPMediaItemPropertyArtwork
+            )
         }
         center.nowPlayingInfo = map
     }

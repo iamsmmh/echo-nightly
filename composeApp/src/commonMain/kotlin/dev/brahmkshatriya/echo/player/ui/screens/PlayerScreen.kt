@@ -69,8 +69,13 @@ fun PlayerScreen(
 ) {
     val playback by graph.player.state.collectAsState()
     val downloads by graph.downloads.downloads.collectAsState()
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val landscape = configuration.screenWidthDp > configuration.screenHeightDp
+    // CMP has no LocalConfiguration; BoxWithConstraints gives us the window
+    var landscape by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints {
+        landscape = maxWidth > maxHeight
+    }
 
     val current = playback.current ?: run {
         LaunchedEffect(Unit) { onDismiss() }
@@ -135,7 +140,7 @@ fun PlayerScreen(
                 ArtworkBlock(graph, playback, Modifier.fillMaxWidth(0.85f))
                 Spacer(Modifier.height(24.dp))
                 TrackInfo(playback)
-                SeekBar(playback, dragPosition) { dragPosition = it }
+                SeekBar(playback, dragPosition, onDrag = { dragPosition = it }, onSeek = { graph.player.seekTo(it.toLong()) })
                 TransportControls(graph, playback, onOpenQueue, speedMenu = { speedMenu = true })
                 Spacer(Modifier.height(24.dp))
             }
