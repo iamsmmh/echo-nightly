@@ -39,7 +39,7 @@ jobs:
         run: >-
           python3 scripts/ci_run.py ./gradlew
           :shared:jvmTest :core:jvmTest :domain:jvmTest :data:jvmTest
-          :extensions:jvmTest :player:jvmTest --stacktrace
+          :extensions:jvmTest :player:jvmTest --stacktrace --continue
       - name: Test evidence
         if: always()
         run: python3 scripts/test_results.py
@@ -68,7 +68,7 @@ jobs:
         run: >-
           python3 scripts/ci_run.py ./gradlew
           :app-android:assembleDebug :wearApp:assembleDebug :composeApp:assemble
-          :app-android:testDebugUnitTest :wearApp:testDebugUnitTest --stacktrace
+          :app-android:testDebugUnitTest :wearApp:testDebugUnitTest --stacktrace --continue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -92,14 +92,14 @@ jobs:
         run: >-
           python3 scripts/ci_run.py ./gradlew
           :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64
-          :composeApp:compileKotlinIosX64 --stacktrace
+          :composeApp:compileKotlinIosX64 --stacktrace --continue
       - name: Native tests and simulator framework
         run: >-
           python3 scripts/ci_run.py ./gradlew
           :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test
           :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test
           :extensions:iosSimulatorArm64Test :player:iosSimulatorArm64Test
-          :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+          :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace --continue
       - name: Test evidence
         if: always()
         run: python3 scripts/test_results.py

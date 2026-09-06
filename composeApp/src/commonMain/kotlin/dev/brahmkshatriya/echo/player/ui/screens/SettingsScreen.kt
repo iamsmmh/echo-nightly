@@ -203,7 +203,7 @@ private fun CrossfadeRow(graph: AppGraph, crossfadeMs: Long) {
         Slider(
             value = seconds,
             onValueChange = { seconds = it },
-            onValueFinished = {
+            onValueChangeFinished = {
                 val millis = (seconds.toInt() * 1000).toLong()
                 graph.settings.update { current -> current.copy(crossfadeMs = millis) }
             },

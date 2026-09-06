@@ -56,7 +56,7 @@ import dev.brahmkshatriya.echo.player.ui.ArtworkImage
 import dev.brahmkshatriya.echo.player.ui.FileImports
 import kotlinx.coroutines.flow.first
 
-private val TABS = listOf("Songs", "Albums", "Artists", "Playlists", "Downloads")
+private val TABS = listOf("Songs", "Albums", "Artists", "Playlists", "Downloads", "Smart")
 
 /** Library screen: local songs, albums, artists, playlists and downloads. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +91,7 @@ fun LibraryScreen(graph: AppGraph, onOpenPlayer: () -> Unit) {
             2 -> ArtistsTab(graph)
             3 -> PlaylistsTab(graph, onOpenPlayer)
             4 -> DownloadsTab(graph)
+            5 -> SmartPlaylistsScreen(graph, onOpenPlayer)
         }
     }
 }
@@ -159,11 +160,11 @@ private fun AlbumsTab(graph: AppGraph) {
         return
     }
     LazyColumn {
-        items(albums, key = { it.title }) { album ->
+        items(albums, key = { "${it.artist}::${it.title}" }) { album ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { /* album playback via queue */ }
+                    .clickable { graph.player.playQueue(graph.library.albumTracks(album), LocalExtensionClient.ID, null) }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -333,16 +334,8 @@ private fun PlaylistsTab(graph: AppGraph, onOpenPlayer: () -> Unit) {
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val refs = playlist.tracks
-                    val loaded = refs.mapNotNull { ref ->
-                        if (ref.extensionId == LocalExtensionClient.ID) {
-                            graph.library.find(ref.trackId)?.let { graph.library.asTrack(it) }
-                        } else null
-                    }
-                    if (loaded.isNotEmpty()) {
-                        graph.player.playQueue(loaded, LocalExtensionClient.ID, null)
-                        onOpenPlayer()
-                    }
+                    graph.playRefs(playlist.tracks)
+                    if (playlist.tracks.isNotEmpty()) onOpenPlayer()
                     openPlaylist = null
                 }) { Text("Play") }
             },

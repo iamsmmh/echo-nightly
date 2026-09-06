@@ -8,6 +8,7 @@ import dev.brahmkshatriya.echo.player.audio.StreamResolver
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.domain.sanitizeUrl
+import dev.brahmkshatriya.echo.player.domain.runCatchingCancellable
 import dev.brahmkshatriya.echo.player.download.DownloadRepository
 import dev.brahmkshatriya.echo.player.extensions.ExtensionRuntime
 import dev.brahmkshatriya.echo.player.extensions.local.LocalExtensionClient
@@ -70,14 +71,14 @@ class DefaultStreamResolver(
             ?: throw EchoError.Playback("Extension '${extension.name}' cannot stream tracks")
 
         val loaded = if (track.streamables.isEmpty()) {
-            runCatching { trackClient.loadTrack(track, false) }
+            runCatchingCancellable { trackClient.loadTrack(track, false) }
                 .getOrElse { throw EchoError.Extension("loadTrack failed: ${it.message}", extension.id, it) }
         } else track
 
         val server = loaded.servers.maxByOrNull { it.quality }
             ?: throw EchoError.Playback("No streamable server for '${track.title}'")
 
-        val media = runCatching { trackClient.loadStreamableMedia(server, false) }
+        val media = runCatchingCancellable { trackClient.loadStreamableMedia(server, false) }
             .getOrElse { throw EchoError.Extension("loadStreamableMedia failed: ${it.message}", extension.id, it) }
 
         return when (media) {

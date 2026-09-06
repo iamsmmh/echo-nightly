@@ -1,6 +1,8 @@
 package dev.brahmkshatriya.echo.player.ui
 
-import dev.brahmkshatriya.echo.player.audio.IosArtworkDecoder
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import org.jetbrains.skia.Image
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSURL
 import platform.UIKit.*
@@ -17,19 +19,22 @@ actual fun platformOpenFilePicker() {
         inMode = UIDocumentPickerMode.UIDocumentPickerModeImport
     )
     picker.allowsMultipleSelection = true
-    picker.delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
+    val delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
         override fun documentPicker(
             controller: UIDocumentPickerViewController,
             didPickDocumentsAtURLs: List<*>
         ) {
             val paths = didPickDocumentsAtURLs.mapNotNull { (it as? NSURL)?.path }
             if (paths.isNotEmpty()) FileImports.emitPicked(paths)
+            activePickerDelegate = null
         }
 
         override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-            // no-op
+            activePickerDelegate = null
         }
     }
+    activePickerDelegate = delegate
+    picker.delegate = delegate
     rootViewController()?.presentViewController(picker, animated = true, completion = null)
 }
 
@@ -44,3 +49,11 @@ private fun rootViewController(): UIViewController? {
 }
 
 actual fun createArtworkDecoder(): ArtworkDecoder = IosArtworkDecoder()
+
+// UIDocumentPicker holds its delegate weakly; retain it until completion.
+private var activePickerDelegate: UIDocumentPickerDelegateProtocol? = null
+
+class IosArtworkDecoder : ArtworkDecoder {
+    override fun decode(bytes: ByteArray): ImageBitmap? =
+        runCatching { Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+}

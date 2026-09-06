@@ -26,7 +26,9 @@ class CacheValidatorTest {
     @Test
     fun `tampered payload fails validation`() {
         val raw = CacheValidator.wrap("""{"a":1}""", nowMs = 10)
-        val tampered = raw.replace("\"a\":1", "\"a\":2")
+        val envelope = kotlinx.serialization.json.Json.decodeFromString(CacheValidator.Envelope.serializer(), raw)
+        val tampered = kotlinx.serialization.json.Json.encodeToString(CacheValidator.Envelope.serializer(), envelope.copy(payload = """{"a":2}"""))
+        kotlin.test.assertNotEquals(raw, tampered)
         assertNull(CacheValidator.unwrap(tampered, nowMs = 20))
     }
 

@@ -72,14 +72,6 @@ class AppGraph(
         )
     }
 
-    init {
-        refreshSubsonicConfig()
-        // Audio FX preferences (Phase 5) feed the shared controller.
-        settings.addListener { applyAudioFxSettings(it) }
-        applyAudioFxSettings(settings.settings)
-        restoreSleepTimer()
-    }
-
     fun applyAudioFxSettings(s: dev.brahmkshatriya.echo.player.library.PlayerSettings) {
         runCatching {
             player.setAudioFxPreferences(
@@ -172,18 +164,34 @@ class AppGraph(
                     )
                 } else null
             },
-            quality = { settings.settings.downloadMaxBitrateKbps }
+            quality = { settings.settings.downloadMaxBitrateKbps },
+            requestForEntry = { entry, bitrate ->
+                if (entry.extensionId == "subsonic" && subsonicApi.isConfigured) {
+                    HttpRequest(subsonicApi.streamUrl(entry.trackId, bitrate, settings.settings.transcodeFormat), requestTimeoutMs = 120_000)
+                } else {
+                    val extension = extensions.extensionFor(entry.extensionId)
+                    val client = extension?.instance?.value()?.getOrNull() as? dev.brahmkshatriya.echo.common.clients.TrackClient
+                    val loaded = client?.loadTrack(entry.sourceTrack ?: dev.brahmkshatriya.echo.common.models.Track(entry.trackId, entry.title), true)
+                    val server = loaded?.servers?.maxByOrNull { it.quality }
+                    val media = server?.let { client?.loadStreamableMedia(it, true) } as? dev.brahmkshatriya.echo.common.models.Streamable.Media.Server
+                    val source = media?.sources?.filterIsInstance<dev.brahmkshatriya.echo.common.models.Streamable.Source.Http>()?.firstOrNull()
+                    source?.takeIf { it.decryption == null && !it.isLive }?.let { HttpRequest(it.request.url, headers = it.request.headers, requestTimeoutMs = 120_000) }
+                }
+            }
         )
     }
 
     val player: PlaybackController by lazy {
         PlaybackController(
             engine = engine,
-            resolver = DefaultStreamResolver(extensions, downloads, library, logger),
+            resolver = object : dev.brahmkshatriya.echo.player.audio.StreamResolver {
+                override suspend fun resolve(item: dev.brahmkshatriya.echo.player.audio.QueueItem) = streamResolver.resolve(item)
+            },
             queue = QueueManager(TimeBasedQueueIdGenerator()),
             persister = dev.brahmkshatriya.echo.player.audio.KeyValuePlaybackPersister(store, json),
             logger = logger,
             scope = scope,
+            onTrackCompleted = { item, playedMs -> history.recordCompletion(refFor(item), playedMs) },
             onTrackStarted = { item ->
                 runCatching {
                     history.record(
@@ -208,13 +216,75 @@ class AppGraph(
         dev.brahmkshatriya.echo.player.ui.ArtworkLoader(http, logger)
     }
 
+    private val streamResolver by lazy { DefaultStreamResolver(extensions, downloads, library, logger) }
+    val recommendations by lazy { dev.brahmkshatriya.echo.player.domain.recommendations.RecommendationEngine(
+        { dev.brahmkshatriya.echo.player.domain.nowEpochMs() }
+    ) }
+    val smartPlaylistEngine by lazy { dev.brahmkshatriya.echo.player.domain.playlists.SmartPlaylistEngine(
+        { dev.brahmkshatriya.echo.player.domain.nowEpochMs() }
+    ) }
+
+    fun providerIdFor(item: dev.brahmkshatriya.echo.common.models.EchoMediaItem): String =
+        item.extras[dev.brahmkshatriya.echo.player.domain.search.SearchProvenance.PROVIDER_ID]
+            ?: if (item.extras.containsKey("localPath")) LocalExtensionClient.ID
+            else extensions.activeExtensionId ?: LocalExtensionClient.ID
+
+    private fun refFor(item: dev.brahmkshatriya.echo.player.audio.QueueItem) = TrackRef(
+        item.extensionId, item.track.id, item.title, item.authors, item.track.album?.title, durationMs = item.track.duration
+    )
+
+    fun playRefs(refs: List<TrackRef>) {
+        val items = refs.mapNotNull { ref ->
+            val track = if (ref.extensionId == LocalExtensionClient.ID) library.find(ref.trackId)?.let(library::asTrack)
+            else dev.brahmkshatriya.echo.common.models.Track(ref.trackId, ref.title,
+                artists = listOf(dev.brahmkshatriya.echo.common.models.Artist("artist:${ref.artist}", ref.artist)),
+                album = ref.album?.let { dev.brahmkshatriya.echo.common.models.Album("album:$it", it) }, duration = ref.durationMs)
+            track?.let { dev.brahmkshatriya.echo.player.audio.QueueItem(dev.brahmkshatriya.echo.player.audio.newQueueId(), it, ref.extensionId) }
+        }
+        player.playItems(items)
+    }
+
+    /** One domain snapshot over existing stores; no second library or history system. */
+    fun catalogSnapshot(): List<dev.brahmkshatriya.echo.player.library.LibrarySong> {
+        val local = library.tracks.value.associateBy { "${LocalExtensionClient.ID}::${it.id}" }
+        val favoriteKeys = favorites.favorites.value.map { it.key }.toSet()
+        val downloaded = downloads.downloads.value.filterValues { it.status.state == dev.brahmkshatriya.echo.player.download.DownloadState.COMPLETED }
+        val refs = local.values.map { TrackRef(LocalExtensionClient.ID, it.id, it.title, it.artist, it.album, durationMs = it.durationMs) } +
+            favorites.favorites.value + history.history.value.map { it.ref } + downloaded.values.map {
+                TrackRef(it.entry.extensionId, it.entry.trackId, it.entry.title, it.entry.artist, durationMs = it.entry.durationMs)
+            }
+        return refs.distinctBy { it.key }.map { ref ->
+            val entry = local[ref.key]
+            dev.brahmkshatriya.echo.player.library.LibrarySong(
+                ref, addedAtMs = entry?.addedAtMs ?: downloaded[ref.key]?.entry?.createdAtMs ?: 0,
+                downloaded = ref.key in downloaded || entry != null, favorite = ref.key in favoriteKeys,
+                stats = history.stats.value[ref.key] ?: dev.brahmkshatriya.echo.player.library.ListeningStats(),
+                genres = setOfNotNull(entry?.genre), albumArtist = entry?.albumArtist ?: ref.artist,
+                albumOrder = entry?.trackNumber?.toLong()
+            )
+        }
+    }
+
     /** Default extension to select on first launch. */
     fun defaultExtensionId(): String = LocalExtensionClient.ID
 
     /** Safe shut down of engine + http. */
     fun shutdown() {
-        player.stop()
+        sleepWatchJob?.cancel()
+        sleepTimer.cancel()
+        player.release()
+        downloads.close()
         engine.release()
         http.close()
     }
+
+    init {
+        refreshSubsonicConfig()
+        // Audio FX preferences (Phase 5) feed the shared controller.
+        settings.addListener { applyAudioFxSettings(it) }
+        player.restoreSession()
+        restoreSleepTimer()
+        scope.launch { downloads.checkHealth() }
+    }
+
 }
