@@ -40,8 +40,10 @@ jobs:
           cache: 'gradle'
 
       - name: Cook KeyStore (optional)
-        if: env.KEYSTORE_B64 != ''
-        run: echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+        if: env.KEYSTORE_B64 != '' && env.SIGNING_PASSWORD != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+          echo "SIGNING_KEYSTORE=$GITHUB_WORKSPACE/signing-key.jks" >> "$GITHUB_ENV"
 
       - name: Cook Google Services (optional)
         if: env.GOOGLE_SERVICES_B64 != ''
@@ -54,9 +56,9 @@ jobs:
         run: |
           set -o pipefail
           ARGS=()
-          if [ -n "$SIGNING_PASSWORD" ] && [ -f "$GITHUB_WORKSPACE/signing-key.jks" ]; then
+          if [ -n "${SIGNING_KEYSTORE:-}" ] && [ -s "${SIGNING_KEYSTORE:-/nonexistent}" ]; then
             ARGS+=(
-              "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks"
+              "-Pandroid.injected.signing.store.file=$SIGNING_KEYSTORE"
               "-Pandroid.injected.signing.store.password=$SIGNING_PASSWORD"
               "-Pandroid.injected.signing.key.alias=key0"
               "-Pandroid.injected.signing.key.password=$SIGNING_PASSWORD"
@@ -64,14 +66,16 @@ jobs:
           else
             echo "::notice::No signing secrets configured - building unsigned stable"
           fi
-          ./gradlew :app-android:assembleStable "${ARGS[@]}" --stacktrace
-          cp app-android/build/outputs/apk/stable/app-stable.apk "app-android/build/${VERSION}.apk"
+          python3 scripts/ci_run.py ./gradlew :app-android:assembleStable "${ARGS[@]}" --stacktrace
+          python3 scripts/android_artifact.py --variant stable --type apk \
+            --destination "app-android/build/${VERSION}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Echo-stable-${{ env.VERSION }}
-          path: app-android/build/outputs/apk/stable/app-stable.apk
+          path: app-android/build/${{ env.VERSION }}.apk
+          if-no-files-found: error
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

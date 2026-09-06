@@ -1,57 +1,86 @@
 name: Android App Bundle
 
-# Builds the signed Android App Bundle (AAB) for Play Store / distribution.
-# Requires the standard signing secrets used by the other Android workflows.
-# Runs on every push to main and on demand.
+# Builds the Android App Bundle (AAB) for Play Store / distribution.
+# Signing is applied only when the signing secrets are configured; without them
+# the workflow still produces (and verifies) an unsigned bundle so the release
+# pipeline is exercised on every push to main.
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: aab-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   aab:
-    name: Build signed release AAB
+    name: Build release AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
-      VERSION: ${{ github.sha }}
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      SIGNING_PASSWORD: ${{ secrets.PASSWORD }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
-          java-version: 17
-          cache: 'gradle'
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Cook Keystore
-        run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/signing-key.jks
+      - name: Cook keystore (optional)
+        if: env.KEYSTORE_B64 != '' && env.SIGNING_PASSWORD != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+          echo "SIGNING_KEYSTORE=$GITHUB_WORKSPACE/signing-key.jks" >> "$GITHUB_ENV"
 
       - name: Build release AAB
         run: |
           set -o pipefail
-          ./gradlew :app-android:bundleRelease \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
-            -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=key0 \
-            -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }} \
-            2>&1 | tee /tmp/ci.log
+          ARGS=()
+          if [ -n "${SIGNING_KEYSTORE:-}" ] && [ -s "${SIGNING_KEYSTORE:-/nonexistent}" ]; then
+            echo "Building a signed bundle"
+            ARGS+=(
+              "-Pandroid.injected.signing.store.file=$SIGNING_KEYSTORE"
+              "-Pandroid.injected.signing.store.password=$SIGNING_PASSWORD"
+              "-Pandroid.injected.signing.key.alias=key0"
+              "-Pandroid.injected.signing.key.password=$SIGNING_PASSWORD"
+            )
+          else
+            echo "::notice::No signing secrets configured - building an unsigned bundle"
+          fi
+          python3 scripts/ci_run.py ./gradlew :app-android:bundleRelease "${ARGS[@]}" --stacktrace
 
-      - name: Verify bundle produced
-        run: |
-          AAB=$(find app-android/build/outputs/bundle -name '*.aab' | head -1)
-          test -n "$AAB" && echo "Bundle: $AAB"
+      - name: Resolve bundle
+        run: python3 scripts/android_artifact.py --variant release --type aab
 
       - name: Upload AAB artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Echo-Android-aab
-          path: app-android/build/outputs/bundle/release/app-release.aab
+          path: app-android/build/outputs/bundle/**/*.aab
+          if-no-files-found: warn
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-aab-log
+          path: build/verification/
+          if-no-files-found: ignore

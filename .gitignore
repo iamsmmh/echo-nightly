@@ -39,3 +39,4 @@ __pycache__/
 
 # Local Python verification environment
 .venv/
+.ci-last-failure.log

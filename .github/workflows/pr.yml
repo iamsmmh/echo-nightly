@@ -4,79 +4,71 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch: { }
+
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Release build (unsigned)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
-          java-version: 17
-          cache: 'gradle'
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        run: |
-          set -o pipefail
-          chmod +x ./gradlew
-          ./gradlew assembleRelease 2>&1 | tee /tmp/ci.log
+        # Compiler diagnostics are published as GitHub annotations by ci_run.py
+        # instead of being committed back to the PR branch as log files.
+        run: python3 scripts/ci_run.py ./gradlew :app-android:assembleRelease :wearApp:assembleRelease --stacktrace
 
-      - name: Report build errors (attach log to branch + PR comment)
-        if: failure() && github.event_name == 'pull_request'
-        run: |
-          set -e
-          LOG_NAME="ci-failure-pr-build-${{ github.run_number }}.log"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch -q origin "$GITHUB_HEAD_REF"
-          git checkout -q -B log-branch "origin/$GITHUB_HEAD_REF"
-          mkdir -p .ci-logs
-          cp /tmp/ci.log ".ci-logs/$LOG_NAME"
-          git add -f ".ci-logs/$LOG_NAME"
-          git commit -q -m "ci: attach failure log $LOG_NAME [skip ci]"
-          for i in 1 2 3; do
-            if git push -q origin HEAD:"$GITHUB_HEAD_REF"; then break; fi
-            git fetch -q origin "$GITHUB_HEAD_REF"
-            git rebase -q "origin/$GITHUB_HEAD_REF" || { git rebase --abort; exit 0; }
-          done
-          {
-            echo "### ❌ pr build failed (run ${{ github.run_id }})"
-            echo
-            echo '```'
-            tail -n 50 /tmp/ci.log 2>/dev/null || true
-            echo '```'
-          } > /tmp/report.md
-          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
-          curl -s -o /dev/null -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            -d @/tmp/payload.json || true
+      - name: Resolve APK
+        run: python3 scripts/android_artifact.py --variant release --type apk
 
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          path: app-android/build/outputs/apk/release/app-release-unsigned.apk
+          name: Echo-Android-pr-${{ github.event.pull_request.number || github.run_number }}
+          path: app-android/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-pr-build-log
+          path: build/verification/
+          if-no-files-found: ignore
 
   secret-scan:
     name: Secret scanning (gitleaks)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
