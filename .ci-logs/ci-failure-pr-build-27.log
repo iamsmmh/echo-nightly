@@ -1,0 +1,284 @@
+Downloading https://services.gradle.org/distributions/gradle-9.0.0-bin.zip
+............10%.............20%.............30%.............40%.............50%............60%.............70%.............80%.............90%.............100%
+
+Welcome to Gradle 9.0.0!
+
+Here are the highlights of this release:
+ - Configuration Cache is the recommended execution mode
+ - Gradle requires JVM 17 or higher to run
+ - Build scripts use Kotlin 2.2 and Groovy 4.0
+ - Improved Kotlin DSL script compilation avoidance
+
+For more details see https://docs.gradle.org/9.0.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: assembleRelease
+
+> Configure project :common
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :composeApp
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :core
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :data
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :domain
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :extensions
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :player
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Configure project :shared
+w: ⚠️ Disabled Kotlin/Native Targets
+The following Kotlin/Native targets cannot be built on this machine and are disabled:
+iosArm64, iosSimulatorArm64, iosX64
+Solution: To hide this message, add 'kotlin.native.ignoreDisabledTargets=true' to the Gradle properties.
+
+
+> Task :data:androidPreBuild UP-TO-DATE
+> Task :app-android:preBuild UP-TO-DATE
+> Task :core:androidPreBuild UP-TO-DATE
+> Task :common:androidPreBuild UP-TO-DATE
+> Task :common:preAndroidMainBuild UP-TO-DATE
+> Task :app-android:preReleaseBuild UP-TO-DATE
+> Task :core:preAndroidMainBuild UP-TO-DATE
+> Task :data:preAndroidMainBuild UP-TO-DATE
+> Task :common:mergeAndroidMainJniLibFolders
+> Task :core:mergeAndroidMainJniLibFolders
+> Task :app-android:mergeReleaseJniLibFolders
+> Task :domain:androidPreBuild UP-TO-DATE
+> Task :domain:preAndroidMainBuild UP-TO-DATE
+> Task :data:mergeAndroidMainJniLibFolders
+> Task :data:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :core:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :common:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :domain:mergeAndroidMainJniLibFolders
+> Task :domain:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :common:copyAndroidMainJniLibsProjectOnly
+> Task :core:copyAndroidMainJniLibsProjectOnly
+> Task :shared:androidPreBuild UP-TO-DATE
+> Task :data:copyAndroidMainJniLibsProjectOnly
+> Task :domain:copyAndroidMainJniLibsProjectOnly
+> Task :common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shared:preAndroidMainBuild UP-TO-DATE
+> Task :core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :extensions:androidPreBuild UP-TO-DATE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :extensions:preAndroidMainBuild UP-TO-DATE
+> Task :extensions:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shared:mergeAndroidMainJniLibFolders
+> Task :extensions:mergeAndroidMainJniLibFolders
+> Task :shared:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :extensions:mergeAndroidMainNativeLibs NO-SOURCE
+> Task :shared:copyAndroidMainJniLibsProjectOnly
+> Task :extensions:copyAndroidMainJniLibsProjectOnly
+> Task :app-android:buildKotlinToolingMetadata
+> Task :app-android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :app-android:checkReleaseDuplicateClasses
+WARNING: [Processor] Library '/home/runner/.gradle/caches/modules-2/files-2.1/androidx.media3/media3-session/1.8.0/e28b8a1b7941dd4c4da264d5e622274e7c8e6488/media3-session-1.8.0.aar' contains references to both AndroidX and old support library. This seems like the library is partially migrated. Jetifier will try to rewrite the library anyway.
+ Example of androidX reference: 'androidx/media3/session/legacy/LegacyParcelableUtil'
+ Example of support library reference: 'android/support/v4/media/MediaDescriptionCompat'
+
+> Task :app-android:dataBindingMergeDependencyArtifactsRelease
+WARNING: [Processor] Library '/home/runner/.gradle/caches/modules-2/files-2.1/com.google.android.gms/play-services-cast-framework/21.5.0/b54e012f75c1af1a7a50f79398dec65df2a80398/play-services-cast-framework-21.5.0.aar' contains references to both AndroidX and old support library. This seems like the library is partially migrated. Jetifier will try to rewrite the library anyway.
+ Example of androidX reference: 'androidx/core/app/TaskStackBuilder'
+ Example of support library reference: 'android/support/v4/media/session/MediaSessionCompat$Token'
+
+> Task :app-android:generateReleaseResValues
+> Task :app-android:mergeReleaseNativeLibs NO-SOURCE
+> Task :app-android:stripReleaseDebugSymbols NO-SOURCE
+> Task :app-android:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app-android:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app-android:extractReleaseSupportedLocales
+> Task :app-android:generateReleaseResources
+> Task :common:generateAndroidMainEmptyResourceFiles
+> Task :core:generateAndroidMainEmptyResourceFiles
+> Task :data:generateAndroidMainEmptyResourceFiles
+> Task :domain:generateAndroidMainEmptyResourceFiles
+> Task :extensions:generateAndroidMainEmptyResourceFiles
+> Task :app-android:generateReleaseBuildConfig
+> Task :common:writeAndroidMainAarMetadata
+> Task :core:writeAndroidMainAarMetadata
+> Task :data:writeAndroidMainAarMetadata
+> Task :domain:writeAndroidMainAarMetadata
+> Task :extensions:writeAndroidMainAarMetadata
+> Task :shared:writeAndroidMainAarMetadata
+> Task :shared:generateAndroidMainEmptyResourceFiles
+> Task :app-android:generateReleaseLocaleConfig
+> Task :app-android:checkReleaseAarMetadata
+> Task :app-android:mapReleaseSourceSetPaths
+> Task :app-android:createReleaseCompatibleScreenManifests
+> Task :app-android:extractDeepLinksRelease
+> Task :common:processAndroidMainManifest
+> Task :core:processAndroidMainManifest
+> Task :data:processAndroidMainManifest
+> Task :domain:processAndroidMainManifest
+> Task :extensions:processAndroidMainManifest
+> Task :shared:processAndroidMainManifest
+> Task :app-android:processReleaseMainManifest
+> Task :app-android:processReleaseManifest
+> Task :app-android:processReleaseManifestForPackage
+> Task :app-android:packageReleaseResources
+> Task :app-android:parseReleaseLocalResources
+> Task :app-android:javaPreCompileRelease
+> Task :app-android:extractProguardFiles
+> Task :app-android:mergeReleaseStartupProfile
+> Task :app-android:mergeReleaseShaders
+> Task :app-android:mergeReleaseArtProfile
+> Task :app-android:compileReleaseShaders NO-SOURCE
+> Task :app-android:generateReleaseAssets UP-TO-DATE
+> Task :app-android:extractReleaseVersionControlInfo
+> Task :common:prepareLintJarForPublish
+> Task :core:prepareLintJarForPublish
+> Task :data:prepareLintJarForPublish
+> Task :domain:prepareLintJarForPublish
+> Task :extensions:prepareLintJarForPublish
+> Task :app-android:mergeReleaseAssets
+> Task :shared:prepareLintJarForPublish
+> Task :app-android:compressReleaseAssets
+> Task :app-android:collectReleaseDependencies
+> Task :app-android:sdkReleaseDependencyData
+> Task :app-android:writeReleaseAppMetadata
+> Task :app-android:writeReleaseSigningConfigVersions
+> Task :wearApp:preBuild UP-TO-DATE
+> Task :wearApp:preReleaseBuild UP-TO-DATE
+> Task :wearApp:mergeReleaseJniLibFolders
+> Task :wearApp:mergeReleaseNativeLibs NO-SOURCE
+> Task :wearApp:stripReleaseDebugSymbols NO-SOURCE
+> Task :wearApp:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :wearApp:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :wearApp:checkReleaseDuplicateClasses
+> Task :wearApp:buildKotlinToolingMetadata
+> Task :wearApp:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :wearApp:checkReleaseAarMetadata
+> Task :wearApp:generateReleaseResValues FROM-CACHE
+> Task :wearApp:mapReleaseSourceSetPaths
+> Task :wearApp:generateReleaseResources
+> Task :common:extractAndroidMainAnnotations
+> Task :wearApp:packageReleaseResources
+> Task :wearApp:parseReleaseLocalResources
+> Task :wearApp:createReleaseCompatibleScreenManifests
+> Task :wearApp:extractDeepLinksRelease FROM-CACHE
+> Task :wearApp:mergeReleaseResources
+> Task :wearApp:javaPreCompileRelease
+> Task :wearApp:desugarReleaseFileDependencies
+> Task :wearApp:mergeReleaseStartupProfile
+> Task :app-android:mergeReleaseResources
+> Task :common:compileAndroidMain
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:47:19 'val monthNumber: Int' is deprecated. Use the 'month' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:47:45 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:48:20 'val monthNumber: Int' is deprecated. Use the 'month' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:51:19 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/Date.kt:52:20 'val dayOfMonth: Int' is deprecated. Use the 'day' property instead.
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/models/EchoFile.kt:12:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+w: file:///home/runner/work/echo-nightly/echo-nightly/common/src/jvmCommon/kotlin/dev/brahmkshatriya/echo/common/models/EchoFileJvm.kt:12:1 'expect'/'actual' classes (including interfaces, objects, annotations, enums, and 'actual' typealiases) are in Beta. Consider using the '-Xexpect-actual-classes' flag to suppress this warning. Also see: https://youtrack.jetbrains.com/issue/KT-61573
+
+> Task :common:bundleAndroidMainClassesToCompileJar
+> Task :wearApp:processReleaseMainManifest
+> Task :wearApp:mergeExtDexRelease
+> Task :app-android:dataBindingGenBaseClassesRelease
+> Task :common:processAndroidMainJavaRes
+
+> Task :shared:compileAndroidMain
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt:70:1 Class 'AndroidMusicStorage' is not abstract and does not implement abstract member:
+fun copyInto(sourcePath: String, dir: <ERROR TYPE REF: Symbol not found for EchoFile>, fileName: String): <ERROR TYPE REF: Symbol not found for EchoFile>
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt:73:28 Type of 'musicDir' is not a subtype of overridden property 'val musicDir: <ERROR TYPE REF: Symbol not found for EchoFile>' defined in 'dev/brahmkshatriya/echo/player/platform/MusicStorage'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt:77:32 Type of 'downloadsDir' is not a subtype of overridden property 'val downloadsDir: <ERROR TYPE REF: Symbol not found for EchoFile>' defined in 'dev/brahmkshatriya/echo/player/platform/MusicStorage'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt:81:28 Type of 'cacheDir' is not a subtype of overridden property 'val cacheDir: <ERROR TYPE REF: Symbol not found for EchoFile>' defined in 'dev/brahmkshatriya/echo/player/platform/MusicStorage'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt:84:5 'copyInto' overrides nothing. Potential signatures for overriding:
+fun copyInto(sourcePath: String, dir: <ERROR TYPE REF: Symbol not found for EchoFile>, fileName: String): <ERROR TYPE REF: Symbol not found for EchoFile>
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:11:57 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:11:57 Not enough information to infer type argument for 'R'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:12:5 None of the following candidates is applicable:
+constructor(p0: File!, p1: String!): RandomAccessFile
+constructor(p0: String!, p1: String!): RandomAccessFile
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:12:33 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:12:33 Not enough information to infer type argument for 'R'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:12:33 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+fun <T : Closeable?, R> T.use(block: (T) -> R): R
+    [R|Contract description]
+     <
+        CallsInPlace(block, EXACTLY_ONCE)
+    >
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:12:39 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:13:43 Unresolved reference 'length'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:15:13 Unresolved reference 'readFully'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:26:5 None of the following candidates is applicable:
+constructor(p0: File!, p1: String!): RandomAccessFile
+constructor(p0: String!, p1: String!): RandomAccessFile
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:26:33 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:26:33 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+fun <T : Closeable?, R> T.use(block: (T) -> R): R
+    [R|Contract description]
+     <
+        CallsInPlace(block, EXACTLY_ONCE)
+    >
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:26:39 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:28:29 Unresolved reference 'length'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/FileHashingAndroid.kt:31:28 Unresolved reference 'read'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/platform/PlatformStores.kt:52:19 Unresolved reference 'EchoFile'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/platform/PlatformStores.kt:55:23 Unresolved reference 'EchoFile'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/platform/PlatformStores.kt:58:19 Unresolved reference 'EchoFile'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/platform/PlatformStores.kt:65:43 Unresolved reference 'EchoFile'.
+e: file:///home/runner/work/echo-nightly/echo-nightly/shared/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/platform/PlatformStores.kt:65:72 Unresolved reference 'EchoFile'.
+
+> Task :shared:compileAndroidMain FAILED
+> Task :common:bundleAndroidMainClassesToRuntimeJar
+> Task :app-android:processReleaseResources
+
+[Incubating] Problems report is available at: file:///home/runner/work/echo-nightly/echo-nightly/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':shared:compileAndroidMain'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3m 8s
+92 actionable tasks: 90 executed, 2 from cache
+Configuration cache entry stored.
