@@ -58,6 +58,11 @@ def main(argv):
             (log.parent / 'android-crash.log').write_text(crash.stdout)
             if crash.stdout.strip():
                 print('::error::' + escape('Android runtime crash log:\n' + '\n'.join(crash.stdout.splitlines()[-70:])))
+            messages = subprocess.run(['adb', 'logcat', '-d', '-v', 'brief', 'System.err:W', 'AndroidRuntime:E', 'ActivityTaskManager:W', '*:S'],
+                                      capture_output=True, text=True, timeout=30)
+            (log.parent / 'android-runtime.log').write_text(messages.stdout)
+            if messages.stdout.strip():
+                print('::error::' + escape('Android activity diagnostics:\n' + '\n'.join(messages.stdout.splitlines()[-100:])))
         except (OSError, subprocess.TimeoutExpired) as failure:
             print('::warning::Could not retrieve Android crash diagnostics: ' + escape(str(failure)))
     return code

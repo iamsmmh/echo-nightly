@@ -20,12 +20,18 @@ class AppLaunchTest {
     )
 
     @Test fun launcherCreatesItsMainAndPlayerViews() {
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                assertFalse(activity.isFinishing)
-                assertNotNull(activity.findViewById<View>(R.id.navHostFragment))
-                assertNotNull(activity.findViewById<View>(R.id.playerFragmentContainer))
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    assertFalse(activity.isFinishing)
+                    assertNotNull(activity.findViewById<View>(R.id.navHostFragment))
+                    assertNotNull(activity.findViewById<View>(R.id.playerFragmentContainer))
+                }
             }
+        } catch (failure: Throwable) {
+            val main = android.os.Looper.getMainLooper().thread
+            val trace = main.stackTrace.joinToString("\n")
+            throw AssertionError("${failure.message}\nMain thread (${main.state}):\n$trace", failure)
         }
     }
 }
