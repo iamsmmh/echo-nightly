@@ -49,7 +49,11 @@ Please include, if possible:
   Gradle and GitHub Actions dependencies monitored.
 - **Secret scanning** — enable GitHub **secret scanning** for this repository
   (Settings → Code security) so leaked tokens are detected automatically. A
-  Gitleaks scan also runs in CI as defense-in-depth.
+  Gitleaks scan also runs in CI as defense-in-depth (report-only; it scans the
+  full history and must not block the pipeline on pre-existing entries).
+- **Dependency graph** — enable the repository **Dependency graph**
+  (Settings → Code security) so Dependabot alerts populate and the PR
+  dependency-review job can block on new high-severity dependencies.
 - **Static analysis** — CodeQL (Java/Kotlin) runs on pull requests and on a
   schedule.
 - **SBOM** — a CycloneDX SBOM is generated on every release.

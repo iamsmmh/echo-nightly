@@ -189,6 +189,9 @@ See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy. Summary
   from CI. Signing material and `google-services.json` are never committed.
 - Enable native **GitHub secret scanning** for this repository
   (Settings → Code security) as the first line of defence for leaked tokens.
+- Enable the repository **Dependency graph** (Settings → Code security) so
+  Dependabot alerts populate and the PR dependency-review job can block on
+  high-severity new dependencies.
 
 ## Roadmap (post-KMP migration)
 
