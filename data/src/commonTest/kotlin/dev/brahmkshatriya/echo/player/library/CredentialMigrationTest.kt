@@ -97,4 +97,11 @@ class CredentialMigrationTest {
         assertFailsWith<SecureStorageException> { SettingsRepository(store, faulty) }
         assertEquals(raw, store.getString(key))
     }
+    @Test fun credentialsAreBoundToTheirServerAndAccount() {
+        val store = InMemoryKeyValueStore(); val secrets = InMemorySecureStorage()
+        val repo = SettingsRepository(store, secrets)
+        repo.update { it.copy(subsonicServerUrl = "https://music.example", subsonicUsername = "listener", subsonicPassword = "secret") }
+        store.putString(key, store.getString(key)!!.replace("https://music.example", "https://different.example"))
+        assertFailsWith<SecureStorageException> { SettingsRepository(store, secrets) }
+    }
 }

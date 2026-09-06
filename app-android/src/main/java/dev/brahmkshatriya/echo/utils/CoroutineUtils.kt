@@ -64,26 +64,22 @@ object CoroutineUtils {
         context: CoroutineContext = Dispatchers.IO, block: suspend () -> T
     ): ListenableFuture<T> {
         val future = SettableFuture.create<T>()
-        launch(context) {
-            future.set(block())
+        val job = launch(context) {
+            try { future.set(block()) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { future.cancel(false); throw cancelled }
+            catch (failure: Exception) { future.setException(failure) }
         }
+        job.invokeOnCompletion { failure ->
+            if (failure is kotlinx.coroutines.CancellationException) future.cancel(false)
+            else if (failure != null) future.setException(failure)
+        }
+        future.addListener({ if (future.isCancelled) job.cancel() }, com.google.common.util.concurrent.MoreExecutors.directExecutor())
         return future
     }
 
     fun <T> CoroutineScope.futureCatching(
         context: CoroutineContext = Dispatchers.IO, block: suspend () -> T
-    ): ListenableFuture<T> {
-        val future = SettableFuture.create<T>()
-        launch(context) {
-            runCatching {
-                future.set(block())
-            }.getOrElse {
-                future.setException(it)
-            }
-        }
-        return future
-    }
-
+    ): ListenableFuture<T> = future(context, block)
 
     suspend fun <T> ListenableFuture<T>.await(context: Context) = suspendCancellableCoroutine {
         it.invokeOnCancellation {

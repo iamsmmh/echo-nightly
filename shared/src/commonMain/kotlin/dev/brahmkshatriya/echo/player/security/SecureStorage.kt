@@ -2,9 +2,12 @@ package dev.brahmkshatriya.echo.player.security
 
 /** Secrets are not settings. Platform stores must fail closed, never fall back to plaintext. */
 interface SecureStorage {
+    @Throws(SecureStorageException::class)
     fun get(key: String): String?
     /** Successful return means the write is durable. */
+    @Throws(SecureStorageException::class)
     fun put(key: String, value: String)
+    @Throws(SecureStorageException::class)
     fun remove(key: String)
 }
 

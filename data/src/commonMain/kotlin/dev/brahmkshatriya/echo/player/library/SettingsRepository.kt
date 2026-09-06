@@ -75,7 +75,7 @@ class SettingsRepository(
         garbage = (document?.get(GARBAGE) as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }?.toSet().orEmpty()
         if (stored.subsonicPassword.isNotEmpty()) {
             // A locked Keychain/failed encryption must leave the legacy document recoverable.
-            val ref = writeSecret(stored.subsonicPassword)
+            val ref = writeSecret(stored)
             val obsolete = garbage + listOfNotNull(credentialRef)
             persist(stored, ref, obsolete)
             garbage = obsolete
@@ -83,6 +83,10 @@ class SettingsRepository(
         } else if (pending.isNotEmpty() || garbage.isNotEmpty()) {
             // Re-establish durability before garbage collection after an interrupted commit.
             persist(stored, credentialRef, garbage)
+        }
+        credentialRef?.let { ref ->
+            if (ref.startsWith("subsonic.v2.") && !ref.startsWith(credentialPrefix(stored)))
+                throw SecureStorageException("Stored credentials do not match this server account")
         }
         _state = MutableStateFlow(stored.copy(subsonicPassword = credentialRef?.let(secrets::get).orEmpty()))
         cleanObsoleteSecrets()
@@ -100,7 +104,7 @@ class SettingsRepository(
             val nextRef = when {
                 value.subsonicPassword.isEmpty() -> null
                 !changed && credentialRef != null -> credentialRef
-                else -> writeSecret(value.subsonicPassword)
+                else -> writeSecret(value)
             }
             val obsolete = garbage + listOfNotNull(credentialRef?.takeIf { it != nextRef })
             // Barrier BEFORE deletion: a crash can see either document, and its secret exists.
@@ -113,8 +117,12 @@ class SettingsRepository(
         listeners.toList().forEach { it(value) }
     }
 
-    private fun writeSecret(password: String): String {
-        val ref = "subsonic." + Sha256.hex(secureRandomBytes(16))
+    private fun credentialPrefix(value: PlayerSettings) = "subsonic.v2." +
+        Sha256.digestHex(value.subsonicServerUrl.trimEnd('/') + "\u0000" + value.subsonicUsername) + "."
+
+    private fun writeSecret(value: PlayerSettings): String {
+        val password = value.subsonicPassword
+        val ref = credentialPrefix(value) + Sha256.hex(secureRandomBytes(16))
         // Journal intent before creating a secret, including the failure/crash window.
         val intentions = pending + ref
         store.putStringDurably(PENDING, JsonArray(intentions.map(::JsonPrimitive)).toString())

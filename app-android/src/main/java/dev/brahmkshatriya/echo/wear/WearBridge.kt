@@ -104,7 +104,7 @@ class WearBridge(
 
     private fun schedulePush() {
         debounceJob?.cancel()
-        debounceJob = scope.launch {
+        debounceJob = scope.launch(kotlinx.coroutines.Dispatchers.Main) {
             delay(PUSH_DEBOUNCE_MS)
             pushState()
         }

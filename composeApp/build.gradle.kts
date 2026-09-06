@@ -26,6 +26,8 @@ kotlin {
         binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // Host integrations/tests use the same platform storage implementation.
+            export(project(":shared"))
             // Business logic lives in :shared/:core/:domain/:data/:extensions/:player
             // and is linked into this framework transitively.
         }
