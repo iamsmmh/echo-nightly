@@ -109,15 +109,21 @@ if command -v ./gradlew >/dev/null 2>&1; then
   ./gradlew :common:assemble :composeApp:assemble --stacktrace
 
   echo "==> Gradle: shared unit tests"
-  # The unit-test task name varies by AGP/KMP plugin version, so discover it
-  # exactly like the CI workflows do.
+  # `com.android.kotlin.multiplatform.library` has no debug/release variants, so
+  # the classic `testDebugUnitTest` name only exists when Android host tests are
+  # enabled. Discover whatever the plugin actually provides instead of
+  # hard-coding a task name that may not exist.
   TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
-    | grep -oE 'test(Debug|Release)UnitTest' | sort -u || true)
+    | grep -oE 'test(Debug|Release)UnitTest|testAndroidHostTest' | sort -u || true)
   if [ -n "$TEST_TASKS" ]; then
     echo "    test tasks: $(echo "$TEST_TASKS" | tr '\n' ' ')"
     ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') --stacktrace
   else
-    echo "ERROR: no Android unit-test task found in :composeApp"; exit 1
+    # Until Android host tests are enabled, src/commonTest is only executed by
+    # the Kotlin/Native targets -- i.e. by `iosSimulatorArm64Test` (iOS CI, and
+    # the macOS section below). Say so loudly rather than pretending we tested.
+    echo "    WARN: :composeApp exposes no Android unit-test task."
+    echo "          src/commonTest runs via :composeApp:iosSimulatorArm64Test (macOS only)."
   fi
 
   if [[ "$QUICK" == "0" ]]; then

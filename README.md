@@ -89,7 +89,12 @@ built-in extensions.
 
 ```bash
 # shared unit tests (queue/shuffle/repeat/downloads/…)
-./gradlew :composeApp:testDebugUnitTest     # via Android target
+# :composeApp uses the AGP Kotlin-multiplatform library plugin, which has no
+# debug/release variants, so there is no `testDebugUnitTest` task. The shared
+# tests in src/commonTest are executed by the Kotlin/Native targets, i.e. on
+# macOS. (Android host tests are not enabled for :composeApp; enabling them in
+# composeApp/build.gradle.kts would add a JVM-side `testAndroidHostTest` task
+# that also runs on Linux.)
 ./gradlew :composeApp:iosSimulatorArm64Test # on macOS
 
 # Android
@@ -97,7 +102,8 @@ built-in extensions.
 ./gradlew :app:assembleNightly      # nightly APK
 ./gradlew :app:assembleStable       # release APK
 
-# iOS framework (builds from any host; running tests needs macOS)
+# iOS framework (macOS only: the Kotlin/Native iOS targets are disabled on
+# Linux/Windows, where these tasks silently produce nothing)
 ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 
 # iOS app (macOS)
