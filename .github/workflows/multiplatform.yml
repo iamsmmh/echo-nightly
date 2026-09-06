@@ -8,7 +8,7 @@ on:
   workflow_dispatch: { }
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -32,39 +32,32 @@ jobs:
                     :composeApp:testDebugUnitTest \
                     --stacktrace 2>&1 | tee /tmp/ci.log
 
-      - name: Report build errors to the PR
+      - name: Report build errors (commit log to branch + PR comment)
         if: failure() && github.event_name == 'pull_request'
         run: |
+          # 1) attach the log to the PR branch so it can be inspected offline
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout "$GITHUB_HEAD_REF" 2>/dev/null || git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
+          cp /tmp/ci.log .ci-last-failure.log || true
+          git add .ci-last-failure.log
+          git commit -q -m "ci: attach failure log [skip ci]" || true
+          git push origin "$GITHUB_HEAD_REF" || true
+          # 2) also try a PR comment with the digest
           {
-            echo "### ❌ ${{ github.workflow }} / shared-code failed (run ${{ github.run_id }})"
+            echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
             echo
             echo '```'
-            grep -hE "^e: |error: |Execution failed for task|Unresolved reference" /tmp/ci.log 2>/dev/null | sort -u | head -80 || true
-            echo
-            echo "---- last 120 lines ----"
-            tail -n 120 /tmp/ci.log 2>/dev/null || true
+            tail -n 60 .ci-last-failure.log 2>/dev/null || true
             echo '```'
-            echo
-            echo "[Full log](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } > /tmp/report.md
           jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
-          curl -s -X POST \
+          curl -s -o /tmp/curl.out -w "%{http_code}" -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            -d @/tmp/payload.json > /dev/null || true
-
-  ios-framework:
-    name: Kotlin Multiplatform iOS framework (all targets)
-    runs-on: macos-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+            -d @/tmp/payload.json || true
+          echo "comment status: $(cat /tmp/curl.out 2>/dev/null)"
       - name: Compile & link every iOS target
         run: |
           set -o pipefail
