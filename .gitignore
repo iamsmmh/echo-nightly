@@ -36,3 +36,6 @@ common/build/
 **/build/
 __pycache__/
 *.pyc
+
+# Local Python verification environment
+.venv/
