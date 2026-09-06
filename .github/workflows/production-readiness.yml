@@ -113,11 +113,11 @@ jobs:
       - name: Test evidence
         if: always()
         run: python3 scripts/test_results.py
-      - name: Select simulator
+      - name: Prepare app-hosted simulator
         if: ${{ !cancelled() }}
         run: |
-          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
-          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
+          ./gradlew --stop
+          python3 scripts/ci_run.py python3 scripts/ios_test_device.py
       - name: Host build and XCTest
         if: ${{ !cancelled() }}
         run: >-
@@ -155,7 +155,7 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
-      - name: Device storage and player-routing tests
+      - name: Device tests and startup measurements
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35

@@ -140,7 +140,15 @@ implementation corrects the representation in the next increment. The separate
 startup probe also failed without sufficient diagnostics; it now installs the
 exact APK and publishes its failures through the CI diagnostic wrapper.
 
-Local static/YAML checks passed. The Python verification suite has **22 executed passing tests**, including
+At `7005b3a` / [34048028030](https://github.com/iamsmmh/echo-nightly/actions/runs/34048028030),
+compilation and the 173 JVM / 173 native / 8 Android / 2 emulator tests passed.
+The app-hosted run could not launch its simulator (0 XCTest passes), so the
+Keychain correction is not yet runtime-verified. CI now boots a separate,
+isolated simulator after the standalone tests. The startup probe correctly
+refused a zero-time permission-controller result; subsequent probes pre-grant
+runtime permissions and require both a cold launch and Echo's own activity.
+
+Local static/YAML checks passed. The Python verification suite has **25 executed passing tests**, including
 benchmark-evidence validation. The first-frame probe is wired to the Android
 emulator lane; a result is not asserted until it has actually run. Local Kotlin/Android builds are unavailable:
 Gradle distribution access is blocked and the sandbox lacks the Android SDK/full

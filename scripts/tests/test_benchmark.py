@@ -15,6 +15,13 @@ class BenchmarkEvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 launch_time(output)
 
+    def test_warm_launches_and_permission_dialogs_are_not_samples(self):
+        with self.assertRaises(ValueError):
+            launch_time('Status: ok\nLaunchState: UNKNOWN (0)\nTotalTime: 123')
+        with self.assertRaises(ValueError):
+            launch_time('Status: ok\nLaunchState: COLD\nActivity: com.android.permissioncontroller/.Grant\nTotalTime: 123', 'dev.echo')
+        self.assertEqual(123, launch_time('Status: ok\nLaunchState: COLD\nActivity: dev.echo/.Main\nTotalTime: 123', 'dev.echo'))
+
     def test_nearest_rank_percentile_and_median(self):
         report = summarize([500, 100, 400, 300, 200])
         self.assertEqual(300, report['median_ms'])
