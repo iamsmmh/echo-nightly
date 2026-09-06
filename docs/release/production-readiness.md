@@ -169,6 +169,12 @@ this explains why valid startup timings were missing. The watchdog is corrected
 to use the main player looper, with additional pause/buffering/progress rules
 covered by regression tests. The launcher test remains enabled.
 
+The subsequent lifecycle diagnostics confirmed that the launcher reached
+`RESUMED`; the deep-link handler had set `Activity.intent` to null, breaking
+AndroidX launch tracking. It now preserves the intent's action/component/flags
+while clearing consumed payloads, with an additional regression test ensuring
+the original incoming request is not mutated.
+
 Local static/YAML checks passed. The Python verification suite has **25 executed passing tests**, including
 benchmark-evidence validation. The first-frame probe is wired to the Android
 emulator lane; a result is not asserted until it has actually run. Local Kotlin/Android builds are unavailable:

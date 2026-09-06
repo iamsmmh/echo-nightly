@@ -40,17 +40,13 @@ open class MainActivity : AppCompatActivity() {
     private val extensionLoader by inject<ExtensionLoader>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        android.util.Log.i("EchoStartup", "MainActivity onCreate started")
-        try {
         super.onCreate(savedInstanceState)
-        android.util.Log.i("EchoStartup", "MainActivity base creation completed")
         setTheme(getAppTheme())
         DynamicColors.applyToActivityIfAvailable(
             this, applyUiChanges(this, uiViewModel)
         )
 
         setContentView(binding.root)
-        android.util.Log.i("EchoStartup", "MainActivity content inflated")
 
         enableEdgeToEdge(
             SystemBarStyle.auto(TRANSPARENT, TRANSPARENT),
@@ -69,11 +65,6 @@ open class MainActivity : AppCompatActivity() {
             add<PlayerFragment>(R.id.playerFragmentContainer, "player")
         }
         setupIntents(uiViewModel)
-        android.util.Log.i("EchoStartup", "MainActivity onCreate completed")
-        } catch (failure: Throwable) {
-            android.util.Log.e("EchoStartup", "MainActivity creation failed", failure)
-            throw failure
-        }
     }
 
     companion object {
