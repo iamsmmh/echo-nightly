@@ -27,24 +27,48 @@ object CacheUtils {
     /** Default freshness window for transient data (stream urls, artwork...). */
     const val DEFAULT_TTL_MS = 6 * 60 * 60 * 1000L //6h
 
-    private const val ENVELOPE_TIME = "_t"
-    private const val ENVELOPE_DATA = "_d"
+    @PublishedApi internal const val ENVELOPE_TIME = "_t"
+    @PublishedApi internal const val ENVELOPE_DATA = "_d"
 
     inline fun <reified T> Context.saveToCache(
         id: String, data: T?, folderName: String = T::class.java.simpleName
     ) = runCatching {
-        val fileName = id.hashCode().toString()
-        val cacheDir = cacheDir(this, folderName)
-        val file = File(cacheDir, fileName)
-
-        var size = cacheDir.walk().sumOf { it.length().toInt() }
-        while (size > CACHE_FOLDER_SIZE) {
-            val files = cacheDir.listFiles()
-            files?.sortBy { it.lastModified() }
-            files?.firstOrNull()?.delete()
-            size = cacheDir.walk().sumOf { it.length().toInt() }
+        val directory = cacheDir(this, folderName)
+        val encoded = wrap(data.toJson(), System.currentTimeMillis())
+        if (encoded.encodeToByteArray().size > CACHE_FOLDER_SIZE) return@runCatching
+        val file = File(directory, dev.brahmkshatriya.echo.player.domain.Sha256.digestHex(id))
+        val temporary = File.createTempFile("echo-cache-", ".tmp", directory)
+        try {
+            temporary.writeText(encoded)
+            check(temporary.renameTo(file)) { "Could not publish cache entry" }
+        } finally { temporary.delete() }
+        val files = directory.listFiles().orEmpty().filter { it.isFile }.sortedBy { it.lastModified() }
+        var size = files.sumOf { it.length() }
+        // A read-only cache file must not trap playback in an unbounded eviction loop.
+        for (candidate in files) {
+            if (size <= CACHE_FOLDER_SIZE) break
+            val length = candidate.length()
+            if (candidate.delete()) size -= length
         }
-        file.writeText(wrap(data.toJson(), System.currentTimeMillis()))
+    }
+
+    @PublishedApi
+    internal fun storedFile(context: Context, id: String, folder: String): File {
+        val directory = cacheDir(context, folder)
+        val current = File(directory, dev.brahmkshatriya.echo.player.domain.Sha256.digestHex(id))
+        return current.takeIf { it.exists() } ?: File(directory, id.hashCode().toString())
+    }
+
+    /** Supports old raw JSON and timestamp envelopes; new writes reuse the shared validator. */
+    @PublishedApi
+    internal fun payload(text: String, nowMs: Long, maxAgeMillis: Long): String? {
+        val parsed = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+        if (parsed != null && (parsed.containsKey("writtenAtMs") && parsed.containsKey("payload")))
+            return dev.brahmkshatriya.echo.player.cache.CacheValidator.unwrap(text, nowMs, maxAgeMillis)
+        if (parsed == null || !parsed.containsKey(ENVELOPE_TIME)) return text
+        val timestamp = (parsed[ENVELOPE_TIME] as? JsonPrimitive)?.longOrNull ?: return null
+        if (timestamp < 0 || timestamp > nowMs + 60_000 || nowMs - timestamp > maxAgeMillis) return null
+        return (parsed[ENVELOPE_DATA] as? JsonPrimitive)?.contentOrNull
     }
 
     /**
@@ -55,27 +79,15 @@ object CacheUtils {
         id: String, folderName: String = T::class.java.simpleName,
         maxAgeMillis: Long = DEFAULT_TTL_MS
     ): T? {
-        val fileName = id.hashCode().toString()
-        val cacheDir = cacheDir(this, folderName)
-        val file = File(cacheDir, fileName)
+        val file = storedFile(this, id, folderName)
         if (!file.exists()) return null
         val text = runCatching { file.readText() }.getOrElse {
             file.delete()
             return null
         }
-        val payload = when (val parsed = unwrap<JsonObject>(text)) {
-            // Envelope written by this version: honour the timestamp.
-            null -> text
-            else -> {
-                val timestamp = parsed[ENVELOPE_TIME]?.let {
-                    (it as? JsonPrimitive)?.longOrNull
-                }
-                if (timestamp == null) text
-                else if (System.currentTimeMillis() - timestamp > maxAgeMillis) {
-                    file.delete()
-                    return null
-                } else parsed[ENVELOPE_DATA]?.let { (it as? JsonPrimitive)?.contentOrNull } ?: text
-            }
+        val payload = payload(text, System.currentTimeMillis(), maxAgeMillis) ?: run {
+            file.delete()
+            return null
         }
         return runCatching { payload.toData<T>().getOrThrow() }.getOrElse {
             // Corrupted / outdated format: purge so we never serve garbage.
@@ -86,8 +98,9 @@ object CacheUtils {
 
     /** Read the raw cached timestamp, if any (debug/metrics use). */
     fun Context.cacheTimestamp(id: String, folderName: String): Long? = runCatching {
-        val file = File(cacheDir(this, folderName), id.hashCode().toString())
-        unwrap<JsonObject>(file.readText())?.get(ENVELOPE_TIME)?.let {
+        val file = storedFile(this, id, folderName)
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(file.readText()) as? JsonObject
+        (parsed?.get("writtenAtMs") ?: parsed?.get(ENVELOPE_TIME))?.let {
             (it as? JsonPrimitive)?.longOrNull
         }
     }.getOrNull()
@@ -95,11 +108,11 @@ object CacheUtils {
     // ---- internals (public-ish because inline functions reference them) ----
 
     fun wrap(json: String?, timestamp: Long): String =
-        "{\"$ENVELOPE_TIME\":$timestamp,\"$ENVELOPE_DATA\":${json.encodeJsonString()}}"
+        dev.brahmkshatriya.echo.player.cache.CacheValidator.wrap(json ?: "null", timestamp)
 
     inline fun <reified T> unwrap(text: String): T? =
         runCatching { text.toData<T>().getOrNull() }.getOrNull()
-            ?.takeIf { it is JsonObject && (it as JsonObject).containsKey(ENVELOPE_TIME) }
+            ?.takeIf { it is JsonObject && (it.containsKey(ENVELOPE_TIME) || it.containsKey("writtenAtMs")) }
 
     fun String?.encodeJsonString(): String {
         if (this == null) return "null"

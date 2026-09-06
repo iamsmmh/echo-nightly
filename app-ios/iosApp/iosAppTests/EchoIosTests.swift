@@ -56,15 +56,15 @@ final class EchoIosTests: XCTestCase {
         let namespace = "keychain-test-" + UUID().uuidString
         let store = IosSecureStorage(name: namespace)
         let other = IosSecureStorage(name: namespace + "-other")
-        defer { try? store.remove(key: "account") }
+        defer { try? store.remove(key_: "account") }
         XCTAssertNil(try store.get(key: "account"))
         try store.put(key: "account", value: "pass — é 🎵")
         XCTAssertEqual(try IosSecureStorage(name: namespace).get(key: "account"), "pass — é 🎵")
         XCTAssertNil(try other.get(key: "account"))
         try store.put(key: "account", value: "updated")
         XCTAssertEqual(try store.get(key: "account"), "updated")
-        try store.remove(key: "account")
+        try store.remove(key_: "account")
         XCTAssertNil(try store.get(key: "account"))
-        try store.remove(key: "account")
+        try store.remove(key_: "account")
     }
 }

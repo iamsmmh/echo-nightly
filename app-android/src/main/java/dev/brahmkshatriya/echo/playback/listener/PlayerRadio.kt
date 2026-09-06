@@ -92,8 +92,8 @@ class PlayerRadio(
         }
     }
 
-    private suspend fun loadPlaylist() = runCatching {
-        val mediaItem = withContext(Dispatchers.Main) { player.currentMediaItem } ?: return
+    private suspend fun loadPlaylist() = dev.brahmkshatriya.echo.player.domain.runCatchingCancellable {
+        val mediaItem = withContext(Dispatchers.Main) { player.currentMediaItem } ?: return@runCatchingCancellable
         val extensionId = mediaItem.extensionId
         val item = mediaItem.track
         val itemContext = mediaItem.context
@@ -101,7 +101,7 @@ class PlayerRadio(
         val extension = extensionList.getExtension(extensionId)
         if (extension == null) {
             stateFlow.value = PlayerState.Radio.Empty
-            return
+            return@runCatchingCancellable
         }
         val loaded = start(throwFlow, extension, item, itemContext)
         stateFlow.value = loaded ?: PlayerState.Radio.Empty

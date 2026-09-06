@@ -162,7 +162,9 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: python3 scripts/ci_run.py ./gradlew :app-android:connectedDebugAndroidTest --stacktrace
+          script: |
+            python3 scripts/ci_run.py ./gradlew :app-android:connectedDebugAndroidTest --stacktrace
+            python3 scripts/startup_benchmark.py
       - name: Device-test evidence
         if: always()
         run: python3 scripts/test_results.py
