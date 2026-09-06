@@ -97,9 +97,12 @@ for path in glob.glob(".github/workflows/*.yml"):
     print(f"        OK {path}")
 EOF
 
-echo "  [6/6] Background audio configured on iOS"
+echo "  [6/6] iOS Info.plist: background audio + Compose high-refresh opt-in"
 grep -q "UIBackgroundModes" iosApp/iosApp/Info.plist
 grep -q "<string>audio</string>" iosApp/iosApp/Info.plist
+# ComposeUIViewController throws IllegalStateException at startup without this.
+grep -q "CADisableMinimumFrameDurationOnPhone" iosApp/iosApp/Info.plist
+grep -A1 "CADisableMinimumFrameDurationOnPhone" iosApp/iosApp/Info.plist | grep -q "<true/>"
 echo "        OK"
 
 if command -v ./gradlew >/dev/null 2>&1; then

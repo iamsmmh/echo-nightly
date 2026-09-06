@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import iosApp
 import ComposeApp
 
@@ -13,9 +14,20 @@ final class EchoIosTests: XCTestCase {
     func testComposeRootLoads() {
         let controller = MainViewKt.MainViewController()
         XCTAssertNotNil(controller)
-        controller.loadViewIfNeeded()
+
+        // Compose draws through Skia into the root view's layer rather than
+        // adding UIKit subviews, and it only builds that hierarchy once the
+        // view is attached to a window and laid out -- `loadViewIfNeeded()`
+        // on a detached controller leaves it empty.
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+
+        XCTAssertTrue(controller.isViewLoaded)
         XCTAssertNotNil(controller.view)
-        XCTAssertFalse(controller.view.subviews.isEmpty)
+        XCTAssertFalse(controller.view.bounds.isEmpty)
+        XCTAssertEqual(controller.view.window, window)
     }
 
     /// The shared playback graph initializes and the audio session is
