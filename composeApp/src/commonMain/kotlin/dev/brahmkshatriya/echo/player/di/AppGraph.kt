@@ -26,6 +26,7 @@ import dev.brahmkshatriya.echo.player.platform.KeyValueStore
 import dev.brahmkshatriya.echo.player.platform.MetadataReader
 import dev.brahmkshatriya.echo.player.platform.MusicStorage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 /**
@@ -60,8 +61,74 @@ class AppGraph(
 
     val subsonicApi: SubsonicApi by lazy { SubsonicApi(http, logger) }
 
+    private var sleepWatchJob: kotlinx.coroutines.Job? = null
+
+    /** Crash-safe sleep timer; the snapshot is persisted next to settings. */
+    val sleepTimer: dev.brahmkshatriya.echo.player.audiofx.SleepTimer by lazy {
+        dev.brahmkshatriya.echo.player.audiofx.SleepTimer(
+            scope = scope,
+            onVolume = { factor -> player.setSleepVolumeFactor(factor) },
+            onExpired = { player.onSleepExpired() }
+        )
+    }
+
     init {
         refreshSubsonicConfig()
+        // Audio FX preferences (Phase 5) feed the shared controller.
+        settings.addListener { applyAudioFxSettings(it) }
+        applyAudioFxSettings(settings.settings)
+        restoreSleepTimer()
+    }
+
+    fun applyAudioFxSettings(s: dev.brahmkshatriya.echo.player.library.PlayerSettings) {
+        runCatching {
+            player.setAudioFxPreferences(
+                crossfadeMs = s.crossfadeMs,
+                replayGainMode = s.replayGainMode,
+                preampDb = s.replayGainPreampDb,
+                limiter = s.replayGainLimiter
+            )
+        }
+    }
+
+    /** Start a sleep timer and persist it so a crash cannot forget it. */
+    fun startSleepTimer(minutes: Int) {
+        settings.update { it.copy(sleepTimerMinutes = minutes) }
+        if (minutes <= 0) {
+            sleepTimer.cancel()
+            store.putString(SLEEP_KEY, null)
+            return
+        }
+        sleepTimer.start(minutes * 60_000L)
+        store.putString(SLEEP_KEY, json.encodeToString(
+            dev.brahmkshatriya.echo.player.audiofx.SleepTimerSnapshot.serializer(),
+            sleepTimer.snapshot.value
+        ))
+        // clear persistence when the timer ends
+        sleepWatchJob?.cancel()
+        sleepWatchJob = scope.launch {
+            sleepTimer.snapshot.collect { snap ->
+                if (!snap.isActive) {
+                    store.putString(SLEEP_KEY, null)
+                    settings.update { it.copy(sleepTimerMinutes = 0) }
+                }
+            }
+        }
+    }
+
+    private fun restoreSleepTimer() {
+        val raw = store.getString(SLEEP_KEY) ?: return
+        val snapshot = runCatching {
+            json.decodeFromString(
+                dev.brahmkshatriya.echo.player.audiofx.SleepTimerSnapshot.serializer(), raw
+            )
+        }.getOrNull() ?: return
+        if (!snapshot.isActive) { store.putString(SLEEP_KEY, null); return }
+        sleepTimer.restore(snapshot)
+    }
+
+    private companion object {
+        const val SLEEP_KEY = "echo.sleep.timer"
     }
 
     /** (Re)applies the Subsonic server configuration from shared settings. */

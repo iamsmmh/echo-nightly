@@ -13,6 +13,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioSession
 import platform.Foundation.NSLog
+import platform.Foundation.NSUserDefaults
+import dev.brahmkshatriya.echo.player.domain.nowEpochMs
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import platform.UIKit.UIViewController
 
 /** NSLog based logger for iOS. Never logs credentials (see sanitizeUrl). */
@@ -55,6 +59,8 @@ object IosApplication {
         )
     }
 
+    private var liveActivityFeedStarted = false
+
     fun create(): IosApplication {
         if (!::graph.isInitialized) {
             graph = AppGraph(scope = scope, logger = logger, engine = engine)
@@ -62,8 +68,47 @@ object IosApplication {
             if (graph.settings.settings.activeExtensionId == null) {
                 graph.extensions.setActiveExtension(graph.defaultExtensionId())
             }
+            startLiveActivityFeed()
         }
         return this
+    }
+
+    /**
+     * Live Activities / Dynamic Island feed (Phase 3).
+     *
+     * Publishes a compact JSON snapshot of the playback state to the
+     * `echo.nowplaying` UserDefaults key on every meaningful change. The
+     * SwiftUI ActivityKit extension (added once a developer provisioning
+     * profile exists) reads this single source of truth; keeping the writer in
+     * Kotlin guarantees widget and in-app state can never diverge.
+     */
+    private fun startLiveActivityFeed() {
+        if (liveActivityFeedStarted) return
+        liveActivityFeedStarted = true
+        scope.launch {
+            graph.player.state.collect { state ->
+                runCatching {
+                    val item = state.current
+                    val json = buildJsonObject {
+                        put("title", item?.title ?: "")
+                        put("artist", item?.authors ?: "")
+                        put("playing", state.isPlaying)
+                        put("positionMs", state.positionMs)
+                        put("durationMs", state.durationMs)
+                        put("bufferedMs", state.bufferedMs)
+                        put("updatedAtMs", nowEpochMs())
+                    }.toString()
+                    NSUserDefaults.standardUserDefaults.setObject(json, forKey = KEY_NOW_PLAYING)
+                }
+            }
+        }
+    }
+
+    fun currentNowPlayingJson(): String? =
+        NSUserDefaults.standardUserDefaults.stringForKey(KEY_NOW_PLAYING)
+
+    private companion object {
+        const val KEY_NOW_PLAYING = "echo.nowplaying"
     }
 }
 
