@@ -1,0 +1,6 @@
+name: Echo CodeQL config
+paths-ignore:
+  - "**/build/**"
+  - "**/.gradle/**"
+  - "scripts/**"
+queries: []

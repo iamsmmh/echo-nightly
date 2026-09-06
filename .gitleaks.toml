@@ -1,0 +1,21 @@
+# Gitleaks configuration for Echo (Phase 8 - security).
+# Defaults are used; the allowlist below keeps *test fixtures* (hash vectors,
+# throwaway "admin/password" strings in unit tests) from failing every PR.
+title = "Echo gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "test fixtures and docs never contain real secrets"
+paths = [
+    '''(.*/)?src/(common|jvm|android|ios)Test/.*''',
+    '''.*Test\.kt$''',
+    '''.*\.swift$''',
+    '''README\.md''',
+    '''docs/.*'''
+]
+regexes = [
+    '''sesame|deadbeef|changeme|your[-_]?token''',
+    '''d41d8cd98f00b204e9800998ecf8427e'''
+]

@@ -6,12 +6,16 @@ on:
       - main
   workflow_dispatch: { }
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      VERSION: $( echo ${{ github.event.head_commit.id }} | cut -c1-7 )
-      COMMIT: $( sed -E "s/(.*) <.*@.*>/\\1/g;t" <<< "${{ github.event.head_commit.message }}" | jq -Rsa . | tail -c +2 | head -c -2 )
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_B64 }}
+      SIGNING_PASSWORD: ${{ secrets.PASSWORD }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -25,51 +29,78 @@ jobs:
           java-version: 17
           cache: 'gradle'
 
-      - name: Cook KeyStore
-        run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/signing-key.jks
+      - name: Compute version
+        run: |
+          SHORT=$(git rev-parse --short HEAD)
+          MSG=$(git log -1 --pretty=%s)
+          {
+            echo "VERSION=$SHORT"
+            echo "COMMIT<<__COMMIT__"
+            echo "$MSG"
+            echo "__COMMIT__"
+          } >> "$GITHUB_ENV"
 
-      - name: Cook Google Services
-        run: echo "${{ secrets.GOOGLE_SERVICES_B64 }}" | base64 -d > app/google-services.json
+      - name: Cook KeyStore (optional)
+        if: env.KEYSTORE_B64 != ''
+        run: echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+
+      - name: Cook Google Services (optional)
+        if: env.GOOGLE_SERVICES_B64 != ''
+        run: echo "$GOOGLE_SERVICES_B64" | base64 -d > app-android/google-services.json
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build with Gradle
         run: |
-          ./gradlew assembleNightly \
-          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
-          -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
-          -Pandroid.injected.signing.key.alias=key0 \
-          -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }}
-          cp app/build/outputs/apk/nightly/app-nightly.apk app/build/${{ env.VERSION }}.apk
+          set -o pipefail
+          ARGS=()
+          if [ -n "$SIGNING_PASSWORD" ] && [ -f "$GITHUB_WORKSPACE/signing-key.jks" ]; then
+            ARGS+=(
+              "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks"
+              "-Pandroid.injected.signing.store.password=$SIGNING_PASSWORD"
+              "-Pandroid.injected.signing.key.alias=key0"
+              "-Pandroid.injected.signing.key.password=$SIGNING_PASSWORD"
+            )
+            echo "Signing nightly build"
+          else
+            echo "::notice::No signing secrets configured - building unsigned nightly"
+          fi
+          ./gradlew :app-android:assembleNightly "${ARGS[@]}" --stacktrace
+          cp app-android/build/outputs/apk/nightly/app-nightly.apk "app-android/build/${VERSION}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          path: app/build/outputs/apk/nightly/app-nightly.apk
+          name: Echo-nightly-${{ env.VERSION }}
+          path: app-android/build/outputs/apk/nightly/app-nightly.apk
 
       - name: Upload APK to Discord
+        if: success()
         shell: bash
         env:
           WEBHOOK: ${{ secrets.DISCORD_NIGHTLY_WEBHOOK }}
         run: |
+          if [ -z "$WEBHOOK" ]; then echo "No Discord webhook configured; skipping."; exit 0; fi
           message=$(echo "@everyone **${{ env.VERSION }}**\n${{ env.COMMIT }}")
-          curl -F "payload_json={\"content\":\"${message}\"}" \
-          -F "echo_beta=@app/build/${{ env.VERSION }}.apk" \
-          ${{ env.WEBHOOK }}
+          curl -sS -F "payload_json={\"content\":\"${message}\"}" \
+          -F "echo_beta=@app-android/build/${{ env.VERSION }}.apk" \
+          "$WEBHOOK"
 
       - name: Upload APK to Telegram
+        if: success()
         shell: bash
         env:
           BOT_ID: ${{ secrets.TELEGRAM_BOT_ID }}
           CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
         run: |
+          if [ -z "$BOT_ID" ] || [ -z "$CHANNEL_ID" ]; then echo "No Telegram secrets configured; skipping."; exit 0; fi
           regex='s/[\_\*\[\]\(\)\~\`\>\#\+\-\=\|\{\}\.\!]/\\&/g'
           message=$(printf "*Nightly Release*\n${{ env.COMMIT }}" | sed -E "$regex")
-          curl -F "chat_id=${{ env.CHANNEL_ID }}" \
-          -F "message_thread_id=${{ env.THREAD_ID }}" \
-          -F "document=@app/build/${{ env.VERSION }}.apk" \
+          curl -sS -F "chat_id=${CHANNEL_ID}" \
+          -F "message_thread_id=${THREAD_ID}" \
+          -F "document=@app-android/build/${{ env.VERSION }}.apk" \
           -F "caption=${message}" \
           -F "parse_mode=MarkdownV2" \
-          https://api.telegram.org/bot${{ env.BOT_ID }}/sendDocument
+          https://api.telegram.org/bot${BOT_ID}/sendDocument

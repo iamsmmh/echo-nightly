@@ -7,8 +7,14 @@ on:
   pull_request:
     paths:
       - 'common/**'
+      - 'shared/**'
+      - 'core/**'
+      - 'domain/**'
+      - 'data/**'
+      - 'extensions/**'
+      - 'player/**'
       - 'composeApp/**'
-      - 'iosApp/**'
+      - 'app-ios/**'
       - 'gradle/**'
       - 'gradlew'
       - 'settings.gradle.kts'
@@ -79,34 +85,39 @@ jobs:
       - name: Run shared unit tests on iOS simulator
         run: |
           set -o pipefail
-          ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace 2>&1 | tee -a /tmp/ci.log
+          # Business-logic modules only: composeApp/player K/N test binaries pull
+          # the whole Compose runtime into the link step and are covered by the
+          # JVM test lane instead.
+          ./gradlew :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test \
+                    :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test \
+                    :extensions:iosSimulatorArm64Test --stacktrace 2>&1 | tee -a /tmp/ci.log
 
       - name: Build iOS app for the simulator (Xcode project build)
         run: |
           set -o pipefail
-          xcodebuild -project iosApp/iosApp.xcodeproj \
+          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
             -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            build 2>&1 | tee -a /tmp/ci.log | xcpretty
+            build 2>&1 | tee -a /tmp/ci.log
 
       - name: Run iOS host tests (XCTest, launches the app in the simulator)
         run: |
           set -o pipefail
-          xcodebuild -project iosApp/iosApp.xcodeproj \
+          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
             -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            test 2>&1 | tee -a /tmp/ci.log | xcpretty
+            test 2>&1 | tee -a /tmp/ci.log
 
       - name: Archive unsigned app (generic iOS device, unsigned for sideloading)
         run: |
           set -o pipefail
-          xcodebuild -project iosApp/iosApp.xcodeproj \
+          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Release \
             -destination 'generic/platform=iOS' \
@@ -115,7 +126,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION="$VERSION_NAME" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            archive | xcpretty
+            archive 2>&1 | tee -a /tmp/ci.log
 
       - name: Package unsigned IPA
         run: |

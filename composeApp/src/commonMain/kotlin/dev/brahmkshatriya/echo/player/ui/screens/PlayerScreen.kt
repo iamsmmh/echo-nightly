@@ -1,5 +1,6 @@
 package dev.brahmkshatriya.echo.player.ui.screens
 
+import dev.brahmkshatriya.echo.player.domain.formatMs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -336,6 +337,7 @@ private fun TransportControls(
             IconButton(onClick = onOpenQueue, modifier = Modifier.semantics { contentDescription = "Queue" }) {
                 Icon(Icons.Filled.QueueMusic, contentDescription = null)
             }
+            dev.brahmkshatriya.echo.player.ui.MediaRouteButton()
         }
     }
 }
@@ -369,22 +371,6 @@ private fun QueueDownloadActions(graph: AppGraph, track: Track, onOpenQueue: () 
     }
 }
 
-internal fun formatMs(ms: Long): String {
-    val totalSeconds = ms / 1000
-    val seconds = totalSeconds % 60
-    val minutes = (totalSeconds / 60) % 60
-    val hours = totalSeconds / 3600
-    return buildString {
-        if (hours > 0) {
-            append(hours)
-            append(':')
-            append(twoDigits(minutes))
-        } else {
-            append(minutes)
-        }
-        append(':')
-        append(twoDigits(seconds))
-    }
-}
+// Time formatting lives in :shared (dev.brahmkshatriya.echo.player.domain.formatMs),
+// so the UI and the sleep timer render durations identically.
 
-internal fun twoDigits(value: Long): String = if (value < 10) "0$value" else value.toString()
