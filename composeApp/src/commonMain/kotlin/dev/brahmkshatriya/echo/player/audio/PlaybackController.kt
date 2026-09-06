@@ -1,0 +1,362 @@
+package dev.brahmkshatriya.echo.player.audio
+
+import dev.brahmkshatriya.echo.common.models.Track
+import dev.brahmkshatriya.echo.player.domain.EchoError
+import dev.brahmkshatriya.echo.player.domain.EchoLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+
+/** Persists/restore the playback session (queue + position). */
+interface PlaybackPersister {
+    fun save(state: PlaybackState)
+    fun restore(): PlaybackState?
+    fun clear()
+}
+
+/**
+ * Resolves a queue item into a playable [ResolvedStream]:
+ * downloaded file or imported local library file first (offline first),
+ * then the extension's stream.
+ */
+interface StreamResolver {
+    suspend fun resolve(item: QueueItem): ResolvedStream
+}
+
+/**
+ * Orchestrates the queue ([QueueManager]) and the platform engine
+ * ([PlayerEngine]) into one consistent, persisted [PlaybackState].
+ *
+ * All public methods are safe to call from the UI thread; heavy work is
+ * dispatched inside the controller scope.
+ */
+class PlaybackController(
+    private val engine: PlayerEngine,
+    private val resolver: StreamResolver,
+    val queue: QueueManager,
+    private val persister: PlaybackPersister,
+    private val logger: EchoLogger,
+    private val scope: CoroutineScope,
+    private val onTrackStarted: (suspend (item: QueueItem) -> Unit)? = null
+) : RemoteCommandListener {
+
+    private val _state = MutableStateFlow(PlaybackState())
+    val state: StateFlow<PlaybackState> = _state.asStateFlow()
+
+    /** Transient user visible messages. */
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    private var resolveJob: Job? = null
+    private var volume: Float = 1f
+    private var speed: Float = 1f
+
+    init {
+        var lastPlaying = false
+        scope.launch {
+            engine.engineState.collect { engineState ->
+                val current = _state.value.current
+                _state.value = _state.value.copy(
+                    isPlaying = engineState.isPlaying,
+                    isBuffering = engineState.isBuffering,
+                    positionMs = engineState.positionMs,
+                    durationMs = if (engineState.durationMs > 0) engineState.durationMs
+                    else current?.track?.duration ?: 0,
+                    bufferedMs = engineState.bufferedMs,
+                    playbackSpeed = engineState.speed
+                )
+                if (engineState.isPlaying != lastPlaying) {
+                    lastPlaying = engineState.isPlaying
+                    pushNowPlaying(engineState.positionMs, engineState.isPlaying)
+                }
+            }
+        }
+        scope.launch {
+            engine.ended.collect { onTrackEnded() }
+        }
+        scope.launch {
+            queue.state.collect { snapshot ->
+                _state.value = _state.value.copy(
+                    queue = snapshot.items,
+                    currentId = snapshot.currentId,
+                    shuffleEnabled = snapshot.shuffleEnabled,
+                    repeatMode = snapshot.repeatMode
+                )
+                persister.save(_state.value)
+            }
+        }
+        // Periodic position persistence so playback can resume after the
+        // process is killed.
+        scope.launch {
+            while (true) {
+                delay(5_000)
+                if (_state.value.current != null) persister.save(_state.value)
+            }
+        }
+        engine.setRemoteCommandListener(this)
+    }
+
+    /** Restores the last persisted session (paused). */
+    fun restoreSession() {
+        val restored = persister.restore() ?: return
+        if (restored.queue.isEmpty()) return
+        scope.launch {
+            queue.replaceItems(restored.queue, restored.currentId)
+            volume = restored.volume
+            speed = restored.playbackSpeed
+            engine.setVolume(volume)
+            engine.setPlaybackSpeed(speed)
+            _state.value = restored.copy(isPlaying = false, isResolving = false)
+        }
+    }
+
+    /** Plays a list of tracks from [startTrackId], replacing the queue. */
+    fun playQueue(tracks: List<Track>, extensionId: String, startTrackId: String?, shuffle: Boolean = false) {
+        if (tracks.isEmpty()) return
+        scope.launch {
+            val current = queue.setQueue(tracks, extensionId, startTrackId, shuffle)
+            if (current != null) startCurrent(current)
+        }
+    }
+
+    fun playPause() {
+        val state = _state.value
+        val current = state.current
+        if (current == null) {
+            restoreAndPlayFirst()
+            return
+        }
+        if (state.isResolving) return
+        if (state.isPlaying) engine.pause() else engine.play()
+    }
+
+    private fun restoreAndPlayFirst() {
+        val first = _state.value.queue.firstOrNull() ?: return
+        scope.launch { startCurrent(first) }
+    }
+
+    fun next(userInitiated: Boolean = true) {
+        scope.launch {
+            val next = queue.advance(userInitiated)
+            if (next != null) startCurrent(next)
+            else {
+                engine.stop()
+                _state.value = _state.value.copy(isPlaying = false, error = null)
+            }
+        }
+    }
+
+    fun previous() {
+        scope.launch {
+            // Standard music player behaviour: restart the track when more
+            // than 3 seconds of it have been played.
+            if (_state.value.positionMs > 3_000) {
+                engine.seekTo(0)
+            } else {
+                val prev = queue.rewind()
+                if (prev != null) startCurrent(prev)
+            }
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        val duration = _state.value.durationMs
+        val clamped = positionMs.coerceIn(0, if (duration > 0) duration else Long.MAX_VALUE)
+        engine.seekTo(clamped)
+        _state.value = _state.value.copy(positionMs = clamped)
+    }
+
+    fun setVolume(value: Float) {
+        volume = value.coerceIn(0f, 1f)
+        engine.setVolume(volume)
+        _state.value = _state.value.copy(volume = volume)
+    }
+
+    fun setPlaybackSpeed(value: Float) {
+        speed = value.coerceIn(0.25f, 3f)
+        engine.setPlaybackSpeed(speed)
+        _state.value = _state.value.copy(playbackSpeed = speed)
+    }
+
+    fun toggleShuffle() {
+        scope.launch {
+            val enabled = queue.toggleShuffle()
+            _state.value = _state.value.copy(shuffleEnabled = enabled)
+        }
+    }
+
+    fun cycleRepeat() {
+        val mode = queue.cycleRepeatMode()
+        _state.value = _state.value.copy(repeatMode = mode)
+    }
+
+    fun jumpTo(itemId: String) {
+        scope.launch {
+            val item = queue.jumpTo(itemId) ?: return@launch
+            startCurrent(item)
+        }
+    }
+
+    fun addToQueue(tracks: List<Track>, extensionId: String, playNext: Boolean) {
+        if (tracks.isEmpty()) return
+        scope.launch {
+            val items = tracks.map { QueueItem(newQueueId(), it, extensionId) }
+            if (playNext) queue.addNext(items) else queue.addLater(items)
+            if (_state.value.current == null) {
+                queue.jumpTo(items.first().id)?.let { startCurrent(it) }
+            }
+        }
+    }
+
+    fun removeFromQueue(itemId: String) {
+        scope.launch {
+            val becameCurrent = queue.remove(itemId)
+            if (becameCurrent != null) startCurrent(becameCurrent)
+        }
+    }
+
+    fun moveInQueue(from: Int, to: Int) {
+        scope.launch { queue.move(from, to) }
+    }
+
+    fun clearQueue() {
+        engine.stop()
+        scope.launch {
+            queue.clear()
+            _state.value = PlaybackState()
+            persister.clear()
+        }
+    }
+
+    fun stop() {
+        engine.pause()
+        persister.save(_state.value)
+    }
+
+    fun dismissError() {
+        _state.value = _state.value.copy(error = null)
+    }
+
+    // ------------------------------------------------------------------ core
+
+    private suspend fun startCurrent(item: QueueItem) {
+        resolveJob?.cancel()
+        resolveJob = scope.launch {
+            _state.value = _state.value.copy(
+                current = item, currentId = item.id, isResolving = true, error = null,
+                positionMs = 0, durationMs = item.track.duration ?: 0
+            )
+            pushNowPlaying(0, false)
+            onTrackStarted?.invoke(item)
+            try {
+                val stream = resolver.resolve(item)
+                if (_state.value.current?.id != item.id) return@launch // changed meanwhile
+                engine.prepare(
+                    EngineRequest(
+                        url = stream.url,
+                        headers = stream.headers,
+                        isLocalFile = stream.isLocalFile,
+                        mimeType = stream.mimeType
+                    )
+                )
+                engine.setVolume(volume)
+                engine.setPlaybackSpeed(speed)
+                engine.play()
+                _state.value = _state.value.copy(isResolving = false)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                val error = e.toPlaybackError()
+                logger.error(TAG, "Failed to resolve stream for '${item.title}': ${error.message}", e)
+                _state.value = _state.value.copy(isResolving = false, isPlaying = false, error = error.userMessage)
+                _messages.tryEmit(error.userMessage)
+                engine.stop()
+            }
+        }
+    }
+
+    private suspend fun onTrackEnded() {
+        val snapshot = queue.state.value
+        if (snapshot.repeatMode == RepeatMode.ONE) {
+            engine.seekTo(0)
+            engine.play()
+            return
+        }
+        val next = queue.advance(userInitiated = false)
+        if (next != null) {
+            startCurrent(next)
+        } else {
+            _state.value = _state.value.copy(isPlaying = false, positionMs = 0)
+            pushNowPlaying(0, false)
+            persister.save(_state.value)
+        }
+    }
+
+    private fun pushNowPlaying(positionMs: Long, playing: Boolean) {
+        val item = _state.value.current ?: return
+        val track = item.track
+        engine.setNowPlayingInfo(
+            NowPlayingInfo(
+                id = item.trackKey,
+                title = track.title,
+                artist = track.artists.joinToString(", ") { it.name },
+                album = track.album?.title,
+                durationMs = _state.value.durationMs,
+                positionMs = positionMs,
+                playbackRate = if (playing) speed else 0f,
+                isPlaying = playing,
+                artworkRequestUrl = (track.cover as? dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder)
+                    ?.request?.url,
+                artworkHeaders = (track.cover as? dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder)
+                    ?.request?.headers ?: emptyMap()
+            )
+        )
+    }
+
+    private fun Throwable.toPlaybackError(): EchoError = when (this) {
+        is EchoError -> this
+        else -> EchoError.Playback(message ?: "Unknown playback failure", this)
+    }
+
+    private companion object {
+        const val TAG = "PlaybackController"
+    }
+}
+
+/**
+ * Persists the playback session as JSON inside a [dev.brahmkshatriya.echo.player.platform.KeyValueStore].
+ */
+class KeyValuePlaybackPersister(
+    private val store: dev.brahmkshatriya.echo.player.platform.KeyValueStore,
+    private val json: Json
+) : PlaybackPersister {
+
+    override fun save(state: PlaybackState) {
+        runCatching {
+            store.putString(KEY_QUEUE, json.encodeToString(PlaybackState.serializer(), state))
+        }
+    }
+
+    override fun restore(): PlaybackState? {
+        val raw = store.getString(KEY_QUEUE) ?: return null
+        return runCatching { json.decodeFromString(PlaybackState.serializer(), raw) }
+            .onFailure { store.remove(KEY_QUEUE) }
+            .getOrNull()
+    }
+
+    override fun clear() {
+        store.remove(KEY_QUEUE)
+    }
+
+    private companion object {
+        const val KEY_QUEUE = "echo.playback.session"
+    }
+}
