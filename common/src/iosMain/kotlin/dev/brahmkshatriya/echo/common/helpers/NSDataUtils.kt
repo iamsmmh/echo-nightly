@@ -3,8 +3,7 @@ package dev.brahmkshatriya.echo.common.helpers
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import platform.Foundation.NSData
-import platform.Foundation.NSMutableData
+import platform.Foundation.*
 import platform.posix.memcpy
 
 /**

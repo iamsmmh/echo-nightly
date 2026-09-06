@@ -1,18 +1,14 @@
 package dev.brahmkshatriya.echo.common.models
 
+import dev.brahmkshatriya.echo.common.helpers.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ObjCBooleanVar
-import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import platform.Foundation.NSFileManager
-import platform.Foundation.NSMutableData
-import platform.Foundation.NSNumber
-import platform.Foundation.NSFileSize
-import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.*
+import platform.darwin.ObjCBooleanVar
 
 @OptIn(ExperimentalForeignApi::class)
 actual class EchoFile actual constructor(path: String) {

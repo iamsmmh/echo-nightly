@@ -39,7 +39,9 @@ class ByteBufferStream(
         check(!closed) { "stream is closed" }
         if (position >= data.size) return -1
         val count = minOf(buffer.size, data.size - position)
-        System.arraycopy(data, position, buffer, 0, count)
+        for (i in 0 until count) {
+            buffer[i] = data[position + i]
+        }
         position += count
         return count
     }

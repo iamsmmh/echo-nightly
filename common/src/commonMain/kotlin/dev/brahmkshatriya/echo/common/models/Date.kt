@@ -1,6 +1,8 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package dev.brahmkshatriya.echo.common.models
 
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -23,7 +25,7 @@ data class Date(
         month: Int? = null,
         day: Int? = null,
     ) : this(
-        runCatching {
+        kotlin.runCatching {
             LocalDate(year, (month ?: 1).coerceIn(1, 12), (day ?: 1).coerceIn(1, 31))
         }.getOrElse { LocalDate(year, 1, 1) }
             .atStartOfDayIn(TimeZone.currentSystemDefault())

@@ -25,6 +25,7 @@ import platform.Foundation.NSURLSessionDownloadDelegateProtocol
 import platform.Foundation.NSURLSessionTaskDelegateProtocol
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.dataTaskWithRequest
+import platform.Foundation.downloadTaskWithRequest
 import platform.Foundation.httpBody
 import platform.Foundation.httpMethod
 import platform.darwin.NSObject
