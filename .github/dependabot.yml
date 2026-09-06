@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Gradle / Kotlin dependencies (version catalog + wrapper)
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 15
+    groups:
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.android*"
+      media3:
+        patterns:
+          - "androidx.media3*"
+      room:
+        patterns:
+          - "androidx.room*"
+      coil:
+        patterns:
+          - "io.coil-kt*"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+
+  # GitHub Actions used across the workflow files
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(ci)"

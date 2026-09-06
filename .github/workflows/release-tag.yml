@@ -1,0 +1,71 @@
+name: Version / Release Tag
+
+# Version automation: creates and pushes a release tag that triggers the
+# existing "Release" workflow (which fires on `v*` tags) and the "stable" /
+# release-artifact workflows.
+#
+# The tag version follows the app's own scheme — `3.0.<commit-count>` — so a
+# release is reproducible and monotonically increasing with history. An explicit
+# version can be supplied to override (e.g. a manual minor bump).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version tag, e.g. 3.1.0. Leave blank to auto-increment 3.0.<commit-count>.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Compute and push release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT" ]; then
+            VER="${INPUT#v}"
+            # Reject obviously malformed versions early.
+            case "$VER" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::Version must look like X.Y.Z, got '$VER'"; exit 1 ;;
+            esac
+          else
+            COUNT=$(git rev-list --count HEAD)
+            VER="3.0.$COUNT"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VER" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: v$VER"
+
+      - name: Reject if tag already exists
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists — pick an explicit higher version."
+            exit 1
+          fi
+
+      - name: Create and push tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $VER"
+          git push origin "$TAG"
+          echo "Pushed tag $TAG — the Release workflow will build artifacts."

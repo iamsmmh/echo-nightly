@@ -74,6 +74,9 @@ built-in extensions.
   Android foreground service)
 - Audio interruptions (calls/Siri), route changes (headphone/Bluetooth
   disconnect) handled without crashes, playback resumption where supported
+- Playback resilience: bounded automatic network retry (exponential backoff for
+  transient failures), a stall watchdog that transparently re-prepares remote
+  streams, and crash-safe session persistence/resumption (unit tested)
 - Subsonic / OpenSubsonic streaming from your own server (token auth,
   bitrate/transcode settings, real ping validation)
 - Dark/light theme following the system, responsive layouts (iPhone/iPad,
@@ -156,8 +159,23 @@ Never commit certificates, profiles or passwords; `.gitignore` blocks them.
   API sanity checks
 - `.github/workflows/release.yml` — manual/tagged releases: Android APK +
   iOS (un)signed IPA attached to a draft GitHub release
+- `.github/workflows/android-aab.yml` — signed release Android App Bundle (AAB)
+- `.github/workflows/release-tag.yml` — version automation: computes the next
+  `3.0.<commit-count>` tag and pushes it to trigger the release pipeline
+- `.github/workflows/codeql.yml` — CodeQL (Kotlin) static analysis
+- `.github/workflows/security.yml` — dependency review on PRs, Gitleaks secret
+  scan, scheduled O/S vulnerability scan
+- `.github/workflows/sbom.yml` — CycloneDX SBOM generation per release
+- `.github/dependabot.yml` — automated dependency update PRs (Gradle + Actions)
+
+> **Note on desktop builds:** this repository currently targets Android + iOS
+> from the shared KMP core and does **not** define a desktop (JVM) application
+> target yet. No desktop CI workflow is added because there is no desktop
+> target to build; see the roadmap below.
 
 ## Privacy & security
+
+See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy. Summary:
 
 - No analytics or tracking is bundled (Firebase is optional at build time and
   absent from CI builds).
@@ -166,6 +184,29 @@ Never commit certificates, profiles or passwords; `.gitignore` blocks them.
 - HTTPS is the default; plain HTTP is only allowed for local-network servers
   (iOS ATS `NSAllowsLocalNetworking`).
 - Downloaded files are validated (magic bytes) before being marked complete.
+- Supply chain: Dependabot (dependency scanning), CodeQL, Gitleaks secret
+  scanning, O/S vulnerability scanning and CycloneDX SBOM generation all run
+  from CI. Signing material and `google-services.json` are never committed.
+- Enable native **GitHub secret scanning** for this repository
+  (Settings → Code security) as the first line of defence for leaked tokens.
+
+## Roadmap (post-KMP migration)
+
+The repository is a two-app Kotlin Multiplatform build (native Android Views
+app + Compose Multiplatform iOS app over one shared `:composeApp` core). The
+following are natural next steps, tracked separately:
+
+1. **Unify the Android UI** onto the shared Compose Multiplatform UI (today
+   Android uses the legacy View/Fragment UI in `app/`).
+2. **Desktop target** — add a JVM/desktop target to `:composeApp` and a
+   desktop CI workflow + installer artifacts.
+3. **WearOS / watchOS / CarPlay / Chromecast surfaces** on top of the shared
+   queue + playback state and the platform media-session integrations.
+4. **Full audio-effects surface** (equalizer, ReplayGain, normalization,
+   crossfade/gapless) across both platform engines.
+5. **DEX extensions on Android remain** the primary third-party content path;
+   built-in Local + Subsonic extensions cover iOS and are the reference for
+   adding more built-ins.
 
 ## Legal
 

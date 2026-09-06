@@ -1,0 +1,57 @@
+name: Android App Bundle
+
+# Builds the signed Android App Bundle (AAB) for Play Store / distribution.
+# Requires the standard signing secrets used by the other Android workflows.
+# Runs on every push to main and on demand.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  aab:
+    name: Build signed release AAB
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.sha }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+          cache: 'gradle'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Cook Keystore
+        run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/signing-key.jks
+
+      - name: Build release AAB
+        run: |
+          set -o pipefail
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=key0 \
+            -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }} \
+            2>&1 | tee /tmp/ci.log
+
+      - name: Verify bundle produced
+        run: |
+          AAB=$(find app/build/outputs/bundle -name '*.aab' | head -1)
+          test -n "$AAB" && echo "Bundle: $AAB"
+
+      - name: Upload AAB artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-aab
+          path: app/build/outputs/bundle/release/app-release.aab

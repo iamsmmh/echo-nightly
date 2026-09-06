@@ -1,0 +1,69 @@
+name: Security
+
+# Supplemental automated security checks:
+#  - dependency-review on pull requests (blocks PRs that add a vulnerable dep)
+#  - Gitleaks secret scanning on every push to main + weekly
+#  - scheduled O/S vulnerability scan of the dependency tree
+#
+# Native GitHub secret scanning should also be enabled in the repo settings;
+# this workflow is defense-in-depth on top of it. See SECURITY.md.
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '21 3 * * 1'   # weekly, Mondays 03:21 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Dependency review (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Review changed dependencies
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  secret-scan:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/src" \
+            ghcr.io/gitleaks/gitleaks:latest \
+            detect --source /src --no-banner --redact
+          # exit code 1 means secrets were found and the job will fail.
+
+  dependency-vulnerabilities:
+    name: O/S dependency vulnerability scan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      # Best effort: osv-scanner understands Gradle/Kotlin partially (it needs a
+      # resolved dependency graph). Dependabot is the authoritative scanner for
+      # our Gradle tree; this job reports whatever OSV can derive and must not
+      # block the pipeline on tooling limitations.
+      - name: Run OSV-Scanner
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/src" \
+            ghcr.io/google/osv-scanner:latest \
+            scan --recursive /src || echo "OSV scan reported issues or lacked a parseable graph; see Dependabot."
