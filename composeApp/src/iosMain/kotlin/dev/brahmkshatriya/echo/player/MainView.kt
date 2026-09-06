@@ -5,24 +5,14 @@ import dev.brahmkshatriya.echo.player.audio.IosAudioPlayer
 import dev.brahmkshatriya.echo.player.di.AppGraph
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.platform.HttpRequest
-import dev.brahmkshatriya.echo.player.ui.ArtworkDecoder
 import dev.brahmkshatriya.echo.player.ui.EchoApp
 import dev.brahmkshatriya.echo.player.ui.FileImports
-import dev.brahmkshatriya.echo.player.audio.IosArtworkDecoder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import platform.Foundation.NSLog
-import platform.Foundation.NSURL
-import platform.UIKit.UIApplication
-import platform.UIKit.UIDocumentPickerDelegateProtocol
-import platform.UIKit.UIDocumentPickerModeImport
-import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIViewController
-import platform.UIKit.UIWindow
-import platform.UIKit.UIWindowScene
-import platform.darwin.NSObject
 
 /** NSLog based logger for iOS. Never logs credentials (see sanitizeUrl). */
 class IosEchoLogger : EchoLogger {
@@ -114,37 +104,5 @@ object EchoIosBridge {
         platform.AVFoundation.AVAudioSession.sharedInstance().category
 }
 
-/** Presents the iOS document picker (Files app) for audio import. */
-actual fun platformOpenFilePicker() {
-    val picker = UIDocumentPickerViewController(
-        documentTypes = listOf("public.audio"),
-        inMode = UIDocumentPickerModeImport
-    )
-    picker.allowsMultipleSelection = true
-    picker.delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
-        override fun documentPicker(
-            controller: UIDocumentPickerViewController,
-            didPickDocumentsAtURLs: List<*>
-        ) {
-            val paths = didPickDocumentsAtURLs.mapNotNull { (it as? NSURL)?.path }
-            if (paths.isNotEmpty()) FileImports.emitPicked(paths)
-        }
+/* iOS UI actuals (document picker, artwork decoder) live in player/ui/IosUiActuals.kt */
 
-        override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-            // no-op
-        }
-    }
-    rootViewController()?.presentViewController(picker, animated = true, completion = null)
-}
-
-private fun rootViewController(): UIViewController? {
-    val application = UIApplication.sharedApplication
-    application.keyWindow?.let { return it.rootViewController }
-    val scene = application.connectedScenes
-        .filterIsInstance<UIWindowScene>()
-        .firstOrNull { it.activationState == platform.UIKit.UIWindowSceneActivationStateForegroundActive }
-        ?: return null
-    return scene.windows.firstOrNull { it.isKeyWindow }?.rootViewController
-}
-
-actual fun createArtworkDecoder(): ArtworkDecoder = IosArtworkDecoder()

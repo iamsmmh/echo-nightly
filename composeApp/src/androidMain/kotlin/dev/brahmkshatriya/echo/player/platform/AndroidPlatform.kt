@@ -2,14 +2,10 @@ package dev.brahmkshatriya.echo.player.platform
 
 import android.content.Context
 import android.util.Log
-import android.graphics.BitmapFactory
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import dev.brahmkshatriya.echo.common.models.EchoFile
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
 import dev.brahmkshatriya.echo.player.domain.sanitizeUrl
-import dev.brahmkshatriya.echo.player.ui.ArtworkDecoder
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -216,12 +212,6 @@ class AndroidHttpClient(private val logger: EchoLogger) : HttpClient {
     }
 }
 
-/** BitmapFactory based artwork decoder. */
-class AndroidArtworkDecoder : ArtworkDecoder {
-    override fun decode(bytes: ByteArray): ImageBitmap? =
-        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()?.asImageBitmap()
-}
-
 /** Android (ExoPlayer/Media3) decoding capabilities. */
 actual fun audioCapabilities(): AudioCapabilities = AudioCapabilities(
     mp3 = true,
@@ -245,4 +235,3 @@ actual fun createMusicStorage(): MusicStorage {
 
 actual fun createMetadataReader(): MetadataReader = AndroidMetadataReader()
 
-actual fun createArtworkDecoder(): ArtworkDecoder = AndroidArtworkDecoder()

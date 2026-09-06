@@ -9,7 +9,7 @@
 .cxx
 local.properties
 .kotlin
-.ci-last-failure.log
+.ci-logs/
 
 # iOS / Xcode
 DerivedData/

@@ -46,7 +46,14 @@ jobs:
           echo "Releasing $VERSION (build $BUILD_NUMBER)"
 
       - name: Run shared unit tests
-        run: ./gradlew :composeApp:testDebugUnitTest :composeApp:iosSimulatorArm64Test --stacktrace
+        run: |
+          TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
+            | grep -oE 'test(Debug|Release)UnitTest' | sort -u || true)
+          if [ -n "$TEST_TASKS" ]; then
+            ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') :composeApp:iosSimulatorArm64Test --stacktrace
+          else
+            ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
+          fi
 
       - name: Build Android release APK
         run: ./gradlew :app:assembleStable --stacktrace

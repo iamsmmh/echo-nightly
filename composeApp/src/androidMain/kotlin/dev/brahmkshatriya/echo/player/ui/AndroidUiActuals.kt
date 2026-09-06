@@ -1,6 +1,8 @@
-package dev.brahmkshatriya.echo.player
+package dev.brahmkshatriya.echo.player.ui
 
-import dev.brahmkshatriya.echo.player.ui.FileImports
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
 
 /**
  * Android file import entry.
@@ -16,3 +18,11 @@ actual fun platformOpenFilePicker() {
     // Hosts call FileImports.emitPicked(paths) with the picked URIs instead.
     // The library-import flow on Android is the Offline extension.
 }
+
+/** BitmapFactory based artwork decoder. */
+class AndroidArtworkDecoder : ArtworkDecoder {
+    override fun decode(bytes: ByteArray): ImageBitmap? =
+        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()?.asImageBitmap()
+}
+
+actual fun createArtworkDecoder(): ArtworkDecoder = AndroidArtworkDecoder()

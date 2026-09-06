@@ -138,32 +138,38 @@ jobs:
           ls -la build/ipa
 
 
-      - name: Report build errors (commit log to branch + PR comment)
+      - name: Report build errors (attach log to branch + PR comment)
         if: failure() && github.event_name == 'pull_request'
         run: |
+          set -e
+          LOG_NAME="ci-failure-${{ github.workflow }}-${{ github.run_number }}.log"
           # 1) attach the log to the PR branch so it can be inspected offline
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout "$GITHUB_HEAD_REF" 2>/dev/null || git checkout -B "$GITHUB_HEAD_REF" "origin/$GITHUB_HEAD_REF"
-          cp /tmp/ci.log .ci-last-failure.log || true
-          git add -f .ci-last-failure.log
-          git commit -q -m "ci: attach failure log [skip ci]" || true
-          git push origin "$GITHUB_HEAD_REF" || true
+          git fetch -q origin "$GITHUB_HEAD_REF"
+          git checkout -q -B log-branch "origin/$GITHUB_HEAD_REF"
+          cp "/tmp/ci.log" ".ci-logs/$LOG_NAME" 2>/dev/null || { mkdir -p .ci-logs; cp /tmp/ci.log ".ci-logs/$LOG_NAME"; }
+          git add -f ".ci-logs/$LOG_NAME"
+          git commit -q -m "ci: attach failure log $LOG_NAME [skip ci]"
+          for i in 1 2 3; do
+            if git push -q origin HEAD:"$GITHUB_HEAD_REF"; then break; fi
+            git fetch -q origin "$GITHUB_HEAD_REF"
+            git rebase -q "origin/$GITHUB_HEAD_REF" || { git rebase --abort; exit 0; }
+          done
           # 2) also try a PR comment with the digest
           {
             echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
             echo
             echo '```'
-            tail -n 60 .ci-last-failure.log 2>/dev/null || true
+            tail -n 50 "/tmp/ci.log" 2>/dev/null || true
             echo '```'
           } > /tmp/report.md
           jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
-          curl -s -o /tmp/curl.out -w "%{http_code}" -X POST \
+          curl -s -o /dev/null -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
             -d @/tmp/payload.json || true
-          echo "comment status: $(cat /tmp/curl.out 2>/dev/null)"
       - name: Upload unsigned IPA artifact
         if: always()
         uses: actions/upload-artifact@v4

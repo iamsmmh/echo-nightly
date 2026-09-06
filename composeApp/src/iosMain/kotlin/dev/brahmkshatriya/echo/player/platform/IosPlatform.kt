@@ -285,7 +285,11 @@ class IosMetadataReader : MetadataReader {
                 metadata.firstOrNull { it.commonKey == key }?.stringValue?.takeIf { it.isNotBlank() }
 
             val artworkData = metadata.firstOrNull { it.commonKey == AVMetadataCommonKeyArtwork }?.dataValue
-            val durationSeconds = asset.duration.seconds
+            // CMTime has no `.seconds` in Kotlin — compute from value/timescale
+            val durationCm = asset.duration
+            val durationSeconds =
+                if (durationCm.timescale == 0) Double.NaN
+                else durationCm.value.toDouble() / durationCm.timescale
 
             val yearText = text(AVMetadataCommonKeyCreationDate)
 

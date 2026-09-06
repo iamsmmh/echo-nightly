@@ -224,13 +224,15 @@ class IosAudioPlayer(
             if (request.headers.isEmpty()) {
                 AVPlayerItem(uRL = url)
             } else {
+                @Suppress("UNCHECKED_CAST")
+                val headerOptions = mapOf(
+                    "AVURLAssetHTTPHeaderFieldsKey" to
+                        request.headers.entries.map { (key, value) -> "$key: $value" }
+                ) as Map<AnyObject, *>
                 AVPlayerItem(
                     asset = AVURLAsset(
                         uRL = url,
-                        options = mapOf(
-                            "AVURLAssetHTTPHeaderFieldsKey" to
-                                request.headers.entries.map { (key, value) -> "$key: $value" }
-                        )
+                        options = headerOptions
                     )
                 )
             }
@@ -332,15 +334,15 @@ class IosAudioPlayer(
     private fun publishTick() {
         val current = player ?: return
         val item = current.currentItem ?: return
-        val positionSeconds = current.currentTime().seconds
-        val durationSeconds = item.duration.seconds
+        val positionSeconds = cmSeconds(current.currentTime())
+        val durationSeconds = cmSeconds(item.duration)
         val bufferedSeconds = run {
             val ranges = item.loadedTimeRanges
             val first = ranges.firstOrNull() as? platform.Foundation.NSValue
             if (first == null) positionSeconds
             else {
-                val end = CMTimeRangeGetEnd(first.timeRangeValue)
-                if (end.seconds.isNaN()) positionSeconds else end.seconds
+                val endSeconds = cmSeconds(CMTimeRangeGetEnd(first.timeRangeValue))
+                if (endSeconds.isNaN()) positionSeconds else endSeconds
             }
         }
         val isBuffering = current.timeControlStatus == AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
@@ -357,6 +359,10 @@ class IosAudioPlayer(
         // Keep the lock screen clock in sync while playing
         if (metadata != null && engineState.value.isPlaying) pushNowPlaying()
     }
+
+    /** CMTime has no `.seconds` member in Kotlin — compute from value/timescale. */
+    private fun cmSeconds(time: platform.CoreMedia.CMTime): Double =
+        if (time.timescale == 0) Double.NaN else time.value.toDouble() / time.timescale
 
     private fun secondsToMs(seconds: Double): Long =
         if (seconds.isNaN() || seconds < 0) 0 else (seconds * 1000).toLong()
@@ -380,7 +386,7 @@ class IosAudioPlayer(
             return
         }
         val state = engineState.value
-        val map = mutableMapOf<Any?, Any?>(
+        val map = mutableMapOf<AnyObject, Any?>(
             MPMediaItemPropertyTitle to info.title,
             MPMediaItemPropertyArtist to info.artist,
             MPMediaItemPropertyPlaybackDuration to (state.durationMs / 1000.0),
