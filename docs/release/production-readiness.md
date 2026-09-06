@@ -81,7 +81,7 @@ remaining gaps are disclosed below, in accordance with `AI_POLICY.md`.
 - Settings are reactive; the leaking UI listener pattern was replaced with
   composition-scoped flow collection. Shared AMOLED and Android dynamic-color
   choices are available; the existing iOS palette remains the fallback.
-- The Android Cast path is being repaired using Media3's forwarding player:
+- The Android Cast path uses Media3's forwarding player:
   one observable MediaSession player, asynchronous queue resolution, stale-work
   rejection and a paused return to local output. Source eligibility rejects
   local handles, DRM, live streams and app-only HTTP headers.
@@ -148,6 +148,16 @@ isolated simulator after the standalone tests. The startup probe correctly
 refused a zero-time permission-controller result; subsequent probes pre-grant
 runtime permissions and require both a cold launch and Echo's own activity.
 
+At `ca1b4a6` / [34049189038](https://github.com/iamsmmh/echo-nightly/actions/runs/34049189038),
+the **entire iOS lane passed**: all three targets compiled, 173 native tests
+passed, and **all 5 app-hosted XCTest tests passed**, including Keychain
+round-trip/update/delete/isolation on the iOS 26.2 simulator. Android/Wear/shared
+UI compilation, 8 Android unit tests and 2 emulator tests also passed. The
+startup probe still reported an unknown launch state without a first-frame
+time; those are not accepted as measurements. A launcher lifecycle test and
+crash/activity-log capture are added to distinguish a real startup problem from
+measurement setup.
+
 Local static/YAML checks passed. The Python verification suite has **25 executed passing tests**, including
 benchmark-evidence validation. The first-frame probe is wired to the Android
 emulator lane; a result is not asserted until it has actually run. Local Kotlin/Android builds are unavailable:
@@ -169,7 +179,13 @@ headset, background audio, casting, power-use or physical-device behavior.
 | Library open <300 ms | Not measured. |
 | Queue restoration <1 s | Correctness tested; latency not measured. |
 
-No latency, battery, parity or coverage percentage is asserted without evidence.
+The Android probe installs the debug APK with runtime permissions pre-granted,
+force-stops the app between samples, and rejects warm launches, zero timings and
+permission-controller/other-app activity results. This measures first-frame
+latency only, not onboarding or fully-interactive startup. Raw samples and
+nearest-rank p95 are retained as `build/verification/android-startup.json` in the
+CI artifact. No latency, battery, parity or coverage percentage is asserted
+without evidence.
 
 ## Release blockers / unfinished requested scope
 
@@ -191,7 +207,7 @@ No latency, battery, parity or coverage percentage is asserted without evidence.
 | Performance | Release/device traces, cold-start/search/library/queue benchmarks, paging/caching profiles and regressions. |
 | WearOS | Standalone offline playback/library/queue/download/artwork sync and battery validation; current app remains principally a remote control. |
 | UI | Full tablet/foldable/landscape, animations, accessibility and UI regression coverage. |
-| Release engineering | Blocking debug/release/lint/detekt/security/SBOM/coverage gates, signed APK/AAB/IPA/Wear artifacts, semantic version/changelog automation and upgrade qualification. |
+| Release engineering | Blocking release/lint/detekt/security/SBOM/coverage gates, minified-build extension-ABI checks, signed APK/AAB/IPA/Wear artifacts, semantic version/changelog automation and upgrade qualification. |
 
 A remaining legacy marker exists in Android `AudioFocusListener` for playback
 started during an active call. It is not removed merely to make a text scan

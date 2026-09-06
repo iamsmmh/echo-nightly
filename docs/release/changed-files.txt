@@ -1,5 +1,5 @@
 Base: 6fe7d015f7872814759071de86eed2227b4c0639
-Checkpoint: d4aea3a
+Code checkpoint: ca1b4a6523570c8842543e4955a1f5c3d9371402
 A=added, M=modified, D=deleted
 
 A	.github/workflows/production-readiness.yml
@@ -15,12 +15,17 @@ A	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/CastRoutingPla
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/ChromecastBridge.kt
 A	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/EchoCastMediaItemConverter.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/cast/EchoCastOptionsProvider.kt
+M	app-android/src/main/java/dev/brahmkshatriya/echo/playback/listener/PlayerRadio.kt
+M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/CacheUtils.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/CoroutineUtils.kt
+M	app-android/src/main/java/dev/brahmkshatriya/echo/utils/FileIntegrity.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/wear/EchoWearListenerService.kt
 M	app-android/src/main/java/dev/brahmkshatriya/echo/wear/WearBridge.kt
 A	app-android/src/main/res/xml/backup_rules.xml
 A	app-android/src/main/res/xml/data_extraction_rules.xml
+A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/CacheEnvelopeTest.kt
 A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/CoroutineFutureTest.kt
+A	app-android/src/test/kotlin/dev/brahmkshatriya/echo/utils/FileIntegrityTest.kt
 M	app-ios/iosApp/iosAppTests/EchoIosTests.swift
 M	composeApp/build.gradle.kts
 A	composeApp/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/di/SecureStorageFactoryAndroid.kt
@@ -60,6 +65,8 @@ A	data/src/commonTest/kotlin/dev/brahmkshatriya/echo/player/download/DownloadRep
 A	data/src/commonTest/kotlin/dev/brahmkshatriya/echo/player/library/CredentialMigrationTest.kt
 M	data/src/commonTest/kotlin/dev/brahmkshatriya/echo/player/library/LocalLibraryRepositoriesTest.kt
 A	data/src/commonTest/kotlin/dev/brahmkshatriya/echo/player/lyrics/LyricsRepositoryTest.kt
+A	docs/release/changed-files.txt
+A	docs/release/production-readiness.md
 M	domain/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/audio/PlaybackController.kt
 M	domain/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/audio/PlaybackState.kt
 M	domain/src/commonMain/kotlin/dev/brahmkshatriya/echo/player/audio/PlayerEngine.kt
@@ -88,10 +95,14 @@ M	player/src/iosMain/kotlin/dev/brahmkshatriya/echo/player/audio/IosAudioPlayer.
 A	scripts/architecture.py
 M	scripts/check.py
 A	scripts/ci_run.py
+A	scripts/ios_test_device.py
 A	scripts/requirements.txt
+A	scripts/startup_benchmark.py
 A	scripts/test_results.py
 A	scripts/tests/test_architecture.py
+A	scripts/tests/test_benchmark.py
 A	scripts/tests/test_evidence.py
+A	scripts/tests/test_ios_device.py
 A	scripts/xcresult_evidence.py
 M	shared/build.gradle.kts
 M	shared/src/androidMain/kotlin/dev/brahmkshatriya/echo/player/platform/AndroidPlatform.kt

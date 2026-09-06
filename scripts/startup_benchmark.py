@@ -57,7 +57,18 @@ def main():
     samples = []
     for _ in range(args.samples):
         adb('shell', 'am', 'force-stop', args.package)
-        samples.append(launch_time(adb('shell', 'am', 'start', '-W', '-n', component), args.package))
+        adb('logcat', '-c')
+        launch = adb('shell', 'am', 'start', '-W', '-n', component)
+        try:
+            samples.append(launch_time(launch, args.package))
+        except ValueError as failure:
+            crashes = adb('logcat', '-d', '-b', 'crash', '-v', 'brief')
+            events = adb('logcat', '-d', '-v', 'brief', 'ActivityTaskManager:I', 'AndroidRuntime:E', '*:S')
+            diagnostic = '\n'.join((crashes + '\n' + events).splitlines()[-100:])
+            output = Path('build/verification/android-launch-failure.txt')
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(launch + '\n' + diagnostic)
+            raise ValueError(str(failure) + '\nCrash/activity diagnostics:\n' + diagnostic) from failure
     result = dict(metric='process-cold-first-frame', platform='Android API 35 x86_64 emulator',
                   build_variant='debug', runtime_permissions_pregranted=True, hardware_certification=False, **summarize(samples))
     output = Path('build/verification/android-startup.json')

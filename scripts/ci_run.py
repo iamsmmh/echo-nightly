@@ -51,6 +51,15 @@ def main(argv):
     code = process.wait()
     if code and not diagnostics:
         print('::error::' + escape('Build failed: ' + ' '.join(argv) + '\n' + '\n'.join(reasons + tail)))
+    if code and os.environ.get('ECHO_ANDROID_DEVICE_TESTS') == '1':
+        try:
+            crash = subprocess.run(['adb', 'logcat', '-d', '-b', 'crash', '-v', 'brief'],
+                                   capture_output=True, text=True, timeout=30)
+            (log.parent / 'android-crash.log').write_text(crash.stdout)
+            if crash.stdout.strip():
+                print('::error::' + escape('Android runtime crash log:\n' + '\n'.join(crash.stdout.splitlines()[-70:])))
+        except (OSError, subprocess.TimeoutExpired) as failure:
+            print('::warning::Could not retrieve Android crash diagnostics: ' + escape(str(failure)))
     return code
 
 

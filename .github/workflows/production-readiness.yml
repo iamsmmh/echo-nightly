@@ -163,7 +163,7 @@ jobs:
           target: default
           disable-animations: true
           script: |
-            python3 scripts/ci_run.py ./gradlew :app-android:connectedDebugAndroidTest --stacktrace
+            ECHO_ANDROID_DEVICE_TESTS=1 python3 scripts/ci_run.py ./gradlew :app-android:connectedDebugAndroidTest --stacktrace
             python3 scripts/ci_run.py python3 scripts/startup_benchmark.py
       - name: Device-test evidence
         if: always()
