@@ -104,15 +104,26 @@ class PlaybackStallTracker(
      * @return true exactly once when a stall is detected; false otherwise.
      */
     fun onTick(id: String?, isPlaying: Boolean, isBuffering: Boolean, positionMs: Long): Boolean {
-        // Track change or empty queue resets the stall accounting.
-        if (id == null || id != currentTrackId) {
-            currentTrackId = id
-            stalledSinceMs = null
-            lastProgressPositionMs = positionMs
+        // Nothing loaded: reset accounting.
+        if (id == null) {
+            if (currentTrackId != null) {
+                currentTrackId = null
+                stalledSinceMs = null
+                lastProgressPositionMs = -1L
+            }
             return false
         }
 
-        // Position advanced → healthy, reset.
+        // A (re)loaded track resets the accounting, then the current
+        // observation is evaluated normally below (so a stall window can open
+        // on the very first buffering tick of a track).
+        if (id != currentTrackId) {
+            currentTrackId = id
+            stalledSinceMs = null
+            lastProgressPositionMs = positionMs
+        }
+
+        // Forward progress → healthy, reset any pending window.
         if (!isBuffering && positionMs > lastProgressPositionMs) {
             lastProgressPositionMs = positionMs
             stalledSinceMs = null
@@ -120,17 +131,15 @@ class PlaybackStallTracker(
         }
 
         // The engine only counts as stalled when it is expected to be playing
-        // (i.e. a prepared, non-ended track). While paused we must not fire.
-        val expectingPlayback = isPlaying
-        if (!expectingPlayback || !isBuffering) {
-            // Not in a playable buffering state (paused, ended, or not buffering)
-            // resets any window that was building up.
+        // (a prepared, non-ended track). While paused or not buffering we must
+        // not fire, and any window that was building up is cancelled.
+        if (!isPlaying || !isBuffering) {
             stalledSinceMs = null
-            if (!isBuffering) lastProgressPositionMs = positionMs.coerceAtLeast(lastProgressPositionMs)
+            if (!isBuffering) lastProgressPositionMs = lastProgressPositionMs.coerceAtLeast(positionMs)
             return false
         }
 
-        // Buffering without progress: keep / start the stall window.
+        // Buffering without progress: start or keep the stall window.
         val now = nowMs()
         val since = stalledSinceMs ?: now.also { stalledSinceMs = it }
         if (now - since >= stallTimeoutMs) {

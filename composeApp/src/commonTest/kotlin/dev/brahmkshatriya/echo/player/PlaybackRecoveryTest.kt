@@ -29,9 +29,13 @@ class RetryPolicyTest {
     }
 
     @Test
-    fun `single attempt policy never retries`() {
+    fun `single attempt policy never retries after a failure`() {
         val policy = RetryPolicy(maxAttempts = 1)
-        assertFalse(policy.canRetry(0))
+        // The single attempt is still available before any failure…
+        assertTrue(policy.canRetry(0))
+        // …but after one failure there is no automatic retry left.
+        assertFalse(policy.canRetry(1))
+        assertEquals(0, policy.attemptsLeftAfter(1))
     }
 
     @Test
