@@ -124,7 +124,7 @@ class SettingsRepositoryTest {
         val repo = SettingsRepository(store)
         var seen = repo.settings
         repo.addListener { seen = it }
-        repo.update { it.copy.transcodeFormat = "mp3") }
+        repo.update { it.copy(transcodeFormat = "mp3") }
         assertEquals("mp3", seen.transcodeFormat)
         repo.removeListener({})
     }
