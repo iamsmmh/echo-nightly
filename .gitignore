@@ -31,3 +31,8 @@ signing-key.jks
 .kotlin/
 composeApp/build/
 common/build/
+
+# All module build products and local verification reports
+**/build/
+__pycache__/
+*.pyc

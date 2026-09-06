@@ -84,7 +84,7 @@ suspend fun <T> withRetry(
 ): T {
     var attempt = 1
     while (true) {
-        val result = kotlin.runCatchingCancellable { block(attempt) }
+        val result = runCatchingCancellable { block(attempt) }
         result.onSuccess { return it }
         val error = result.exceptionOrNull()!!
         if (!shouldRetry(error, attempt) || !policy.shouldRetry(attempt)) throw error

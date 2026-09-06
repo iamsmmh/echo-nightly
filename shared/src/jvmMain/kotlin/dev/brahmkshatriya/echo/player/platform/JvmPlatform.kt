@@ -196,7 +196,7 @@ class JvmHttpClient(private val logger: EchoLogger) : HttpClient {
                     val buffer = ByteArray(64 * 1024)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
-                        kotlinx.coroutines.ensureActive()
+                        ensureActive()
                         out.write(buffer, 0, read)
                         written += read
                         onProgress(written, total)

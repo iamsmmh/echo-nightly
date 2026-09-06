@@ -1,0 +1,135 @@
+name: Production readiness
+
+on:
+  push:
+    branches: ['main', 'arena/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python3 scripts/check.py
+      - run: python3 -m unittest discover -s scripts/tests -v
+
+  shared:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Shared JVM tests
+        run: >-
+          python3 scripts/ci_run.py ./gradlew
+          :shared:jvmTest :core:jvmTest :domain:jvmTest :data:jvmTest
+          :extensions:jvmTest :player:jvmTest --stacktrace
+      - name: Test evidence
+        if: always()
+        run: python3 scripts/test_results.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-evidence
+          path: |
+            build/verification/
+            */build/test-results/
+            */build/reports/tests/
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile applications and shared UI
+        run: >-
+          python3 scripts/ci_run.py ./gradlew
+          :app-android:assembleDebug :wearApp:assembleDebug :composeApp:assemble
+          :app-android:testDebugUnitTest :wearApp:testDebugUnitTest --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-evidence
+          path: |
+            build/verification/
+            */build/outputs/apk/debug/*.apk
+            */build/test-results/
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Native compilation
+        run: >-
+          python3 scripts/ci_run.py ./gradlew
+          :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64
+          :composeApp:compileKotlinIosX64 --stacktrace
+      - name: Native tests and simulator framework
+        run: >-
+          python3 scripts/ci_run.py ./gradlew
+          :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test
+          :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test
+          :extensions:iosSimulatorArm64Test :player:iosSimulatorArm64Test
+          :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+      - name: Test evidence
+        if: always()
+        run: python3 scripts/test_results.py
+      - name: Select simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          echo "SIMULATOR_ID=$DEVICE" >> "$GITHUB_ENV"
+      - name: Host build and XCTest
+        run: >-
+          python3 scripts/ci_run.py xcodebuild
+          -project app-ios/iosApp/iosApp.xcodeproj -scheme iosApp
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -derivedDataPath build/DerivedData -resultBundlePath build/HostTests.xcresult
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-evidence
+          path: |
+            build/verification/
+            build/HostTests.xcresult
+            */build/test-results/
+
+  build-gate:
+    if: always()
+    needs: [architecture, shared, android, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every target
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 -c 'import json,os; r=json.loads(os.environ["RESULTS"]); assert all(j["result"] == "success" for j in r.values()), r'

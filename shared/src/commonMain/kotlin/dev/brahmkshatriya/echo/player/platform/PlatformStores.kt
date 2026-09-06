@@ -1,5 +1,7 @@
 package dev.brahmkshatriya.echo.player.platform
 
+import dev.brahmkshatriya.echo.common.models.EchoFile
+
 interface KeyValueStore {
     fun getString(key: String): String?
     fun putString(key: String, value: String?)
