@@ -32,6 +32,7 @@ import dev.brahmkshatriya.echo.common.helpers.ClientException
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.Album
 import dev.brahmkshatriya.echo.common.models.Artist
+import dev.brahmkshatriya.echo.common.models.EchoFile
 import dev.brahmkshatriya.echo.common.models.EchoMediaItem
 import dev.brahmkshatriya.echo.common.models.ExtensionType
 import dev.brahmkshatriya.echo.common.models.Feed
@@ -566,7 +567,7 @@ class UnifiedExtension(
     }
 
     override suspend fun editPlaylistCover(
-        playlist: Playlist, cover: File?
+        playlist: Playlist, cover: EchoFile?
     ) {
 //        coverDir.listFiles {
 //            it.nameWithoutExtension == playlist.id

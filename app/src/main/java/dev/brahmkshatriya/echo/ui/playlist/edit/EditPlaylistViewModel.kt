@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import dev.brahmkshatriya.echo.common.models.EchoFile
 import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -174,7 +175,7 @@ class EditPlaylistViewModel(
                 }
 
                 is CoverState.Changed -> extension.getAs<PlaylistEditCoverClient, Unit> {
-                    editPlaylistCover(playlist, cover.file)
+                    editPlaylistCover(playlist, EchoFile(cover.file.path))
                 }
             }
 

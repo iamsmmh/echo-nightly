@@ -13,6 +13,7 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import dev.brahmkshatriya.echo.R
 import dev.brahmkshatriya.echo.common.models.Date
+import dev.brahmkshatriya.echo.common.models.EchoFile
 import dev.brahmkshatriya.echo.common.models.EchoMediaItem
 import dev.brahmkshatriya.echo.common.models.ImageHolder
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toResourceUriImageHolder
@@ -119,8 +120,8 @@ abstract class UnifiedDatabase : RoomDatabase() {
         dao.insertPlaylist(entity)
     }
 
-    suspend fun editPlaylistCover(playlist: Playlist, file: File?) {
-        val image: ImageHolder? = file?.toUri()?.toString()?.toResourceUriImageHolder(true)
+    suspend fun editPlaylistCover(playlist: Playlist, file: EchoFile?) {
+        val image: ImageHolder? = file?.file?.toUri()?.toString()?.toResourceUriImageHolder(true)
         val entity = playlist.toEntity().copy(
             cover = image?.toJson()
         )

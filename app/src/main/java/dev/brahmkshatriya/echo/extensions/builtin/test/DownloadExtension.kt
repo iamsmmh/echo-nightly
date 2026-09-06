@@ -25,7 +25,7 @@ import dev.brahmkshatriya.echo.extensions.ExtensionUtils.getAs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import java.io.File
+import dev.brahmkshatriya.echo.common.models.EchoFile
 
 class DownloadExtension(
     val context: Context
@@ -66,13 +66,13 @@ class DownloadExtension(
     override suspend fun merge(
         progressFlow: MutableStateFlow<Progress>,
         context: DownloadContext,
-        files: List<File>
+        files: List<EchoFile>
     ) = test(progressFlow, "Merging", 5000)
 
     override suspend fun tag(
         progressFlow: MutableStateFlow<Progress>,
         context: DownloadContext,
-        file: File
+        file: EchoFile
     ) = test(progressFlow, "Tagging", 2000)
 
     override suspend fun getDownloadTracks(
@@ -116,7 +116,7 @@ class DownloadExtension(
         progressFlow: MutableSharedFlow<Progress>,
         type: String,
         crash: Long
-    ): File {
+    ): EchoFile {
         progressFlow.emit(Progress(crash, 0))
         var it = 0L
         while (it < crash) {
@@ -125,7 +125,7 @@ class DownloadExtension(
             it++
         }
         if (type == "Tagging") throw Exception("Test exception in $type")
-        return this.context.cacheDir
+        return EchoFile(this.context.cacheDir.path)
     }
 
     override suspend fun getSettingItems() = listOf<Setting>()

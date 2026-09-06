@@ -29,6 +29,8 @@ actual class EchoFile actual constructor(path: String) {
     actual fun mkdirs(): Boolean = file.mkdirs()
 
     actual fun isDirectory(): Boolean = file.isDirectory
+
+    override fun toString(): String = file.path
 }
 
 actual fun EchoFile.bytes(): ByteArray = file.readBytes()
