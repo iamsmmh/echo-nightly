@@ -2,13 +2,9 @@ package dev.brahmkshatriya.echo.common.models
 
 import dev.brahmkshatriya.echo.common.helpers.toByteArray
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.value
 import platform.Foundation.*
-import platform.darwin.ObjCBooleanVar
 
 @OptIn(ExperimentalForeignApi::class)
 actual class EchoFile actual constructor(path: String) {
@@ -43,11 +39,12 @@ actual class EchoFile actual constructor(path: String) {
         error = null
     )
 
-    actual fun isDirectory(): Boolean = memScoped {
-        val isDir = alloc<ObjCBooleanVar>()
-        val exists = manager.fileExistsAtPath(filePath, isDirectory = isDir.ptr)
-        exists && isDir.value
-    }
+    actual fun isDirectory(): Boolean = runCatching {
+        // Avoids the BOOL* out-param (ObjCBooleanVar mapping differences)
+        val attributes = manager.attributesOfItemAtPath(filePath, error = null)
+        val type = attributes?.get(NSFileType) as? String
+        type == NSFileTypeDirectory
+    }.getOrDefault(false)
 }
 
 @OptIn(ExperimentalForeignApi::class)
