@@ -24,14 +24,14 @@ permissions:
 
 jobs:
   # GitHub's dependency-review-action requires the repository's Dependency
-  # graph to be enabled (Settings → Code security). Until it is, the action
-  # reports "not supported" — keep this job from blocking the pipeline so the
-  # same workflow hard-fails as soon as Dependency graph is turned on.
+  # graph to be enabled (Settings → Code security). This repo cannot enable it
+  # from code, so the job only runs once an admin has (a) enabled the
+  # Dependency graph and (b) set the repository variable
+  # DEPENDENCY_REVIEW_ENABLED=true. Skipped by default, so it never blocks.
   dependency-review:
     name: Dependency review (PR)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && vars.DEPENDENCY_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
