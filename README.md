@@ -1,4 +1,4 @@
-# Echo Nightly — Android + iOS Kotlin Multiplatform music player
+# Echo Nightly — Android + iOS + Wear OS Kotlin Multiplatform music player
 
 Echo is an extension-based music player: a client for **your own sources**.
 The app ships with no music and bundles no content — you either import local
@@ -6,54 +6,37 @@ audio files or connect it to your own server (e.g. any Subsonic / OpenSubsonic
 compatible server such as Navidrome), and on Android you can additionally
 install the Echo extension ecosystem's dynamic extensions.
 
-This repository contains **two applications built from one shared Kotlin
-Multiplatform core**:
+## Modules
 
-| | Android app (`app/`) | iOS app (`iosApp/` + `composeApp/`) |
-|---|---|---|
-| UI | The mature native Android UI (Views/Fragments) | Compose Multiplatform UI |
-| Audio | Media3 / ExoPlayer (`PlayerService`, media session, notification) | AVFoundation / AVPlayer + `AVAudioSession` |
-| Shared | `:common` extension API + `:composeApp` shared core (domain, queue, downloads, extensions, settings, persistence) | same shared core |
+One shared Kotlin Multiplatform core feeds three apps:
 
-## Architecture
+| Module             | What lives there                                                                 |
+|--------------------|-----------------------------------------------------------------------------------|
+| `common/`          | The public **extension API** (`dev.brahmkshatriya.echo:common`, published to Maven). Models, clients, streamables. Public signatures are frozen for third-party extension APKs. |
+| `shared/`          | Platform abstractions: logging (`EchoLogger`, log redaction via `sanitizeUrl`), errors, `KeyValueStore`, HTTP client, files (`EchoFile` helpers), SHA-256, MD5, audio format sniffing, time formatting. |
+| `core/`            | Pure recovery policies: `RetryPolicy` (exponential backoff + jitter), `WatchdogPolicy` (stall escalation), `RecoveryPolicy` (retry → next server → skip → stop). Fully unit tested. |
+| `domain/`          | Playback engine contract, `QueueManager` (deterministic shuffle/repeat), `PlaybackController` (offline-first resolution, persistence, crash resume, bounded network retry + stall watchdog), sleep timer + crossfade + ReplayGain (audio FX). |
+| `data/`            | Settings, playlists, favorites, history, downloads (state machine, resume via HTTP ranges, `*.echo.sha256` integrity sidecars), `CacheValidator` (timestamped + hash-checked cache envelopes). |
+| `extensions/`      | Extension runtime, Subsonic/OpenSubsonic API client, local library client.        |
+| `player/`          | Platform engines: `AndroidAudioPlayer` (Media3) and `IosAudioPlayer` (AVFoundation/AVPlayer + MPNowPlayingInfoCenter + MPRemoteCommandCenter + interruptions + route changes). |
+| `composeApp/`      | Compose Multiplatform UI (Home/Search/Library/Queue/Player/Settings) + shared DI (`AppGraph`), hosted on iOS (and usable on Android). |
+| `app-android/`     | The mature native Android app: Views UI, media3 `PlayerService`, Android Auto, notification, media session, dynamic DEX extension loader, **playback watchdog, crash-safe resume, auto network retry, Wear OS + Chromecast bridges**. |
+| `wearApp/`         | Wear OS companion: play/pause/next/previous + now-playing card, synced over the Wearable Message API. |
+| `app-ios/iosApp/`  | Xcode project (SwiftUI host, `EchoIosTests`, Live-Activity-ready state feed). |
 
 ```
-            ┌───────────────────────────────────────────┐
-            │        Shared Kotlin core (KMP)           │
-            │  common/   extension API + models (KMP)   │
-            │  composeApp/                               │
-            │    commonMain: domain, queue, shuffle/     │
-            │      repeat, downloads, settings, search,  │
-            │      playlist logic, extension runtime,    │
-            │      Compose Multiplatform UI              │
-            │    androidMain: ExoPlayer engine,          │
-            │      HttpURLConnection, MediaMetadataRetriever │
-            │    iosMain: AVPlayer engine (AVAudioSession,│
-            │      MPNowPlayingInfoCenter,               │
-            │      MPRemoteCommandCenter), NSURLSession, │
-            │      AVAsset metadata                      │
-            └───────────────┬───────────────┬───────────┘
-                            │               │
-                    Android (app/)      iOS (iosApp/)
-                    Media3 + Views      SwiftUI host + Compose
+                      ┌──────────────────────────────────────────┐
+                      │              shared core (KMP)           │
+                      │  common ─ extensions ─ shared ─ core     │
+                      │  domain ─ data ─ player                  │
+                      └───────┬──────────────┬─────────────┬─────┘
+                              │              │             │
+                       app-android/       composeApp/   (JVM/desktop
+                       Media3 + Views +   Compose UI +  libraries via
+                       Auto + Wear + Cast iOS host      gradle targets)
+                                            ▲
+                                     app-ios/iosApp (SwiftUI host)
 ```
-
-**What is shared** (one implementation, unit-tested in `commonTest`):
-`Track`/`Album`/`Artist`/`Playlist` domain models (from `:common`),
-`QueueManager` (deterministic queue-safe shuffle, repeat off/one/all),
-`PlaybackController` (offline-first stream resolution, persistence,
-resumption), the download system (queued/downloading/paused/completed/
-failed/cancelled with progress, pause/resume/retry and file validation),
-`ExtensionRuntime` (Echo's extension API with built-in extensions: **Offline
-Library** and **Subsonic**), settings, playlists, favorites, history, search,
-error types (`EchoError`) and logging (`EchoLogger`).
-
-**What stays native:** the Android app keeps its proven View-based UI,
-Media3 `PlayerService` (notification, lock screen, Android Auto, audio focus)
-and its DEX extension loader; iOS implements playback with AVFoundation and
-its SwiftUI host owns the app lifecycle. Dynamic (DEX) extensions are an
-Android-only capability; on iOS the same extension API is served by the
-built-in extensions.
 
 ## Features
 
@@ -64,7 +47,7 @@ built-in extensions.
   reshuffle keeps current track first) and repeat off/one/all — synchronized
   across UI, notification/lock screen on both platforms
 - Downloads with progress, pause/resume (HTTP range), retry, duplicate
-  detection, magic-byte file validation
+  detection, magic-byte file validation and SHA-256 integrity sidecars
 - Local library import: Files app / document picker on iOS, offline extension
   (MediaStore) on Android
 - Playlists, favorites, play history
@@ -74,53 +57,87 @@ built-in extensions.
   Android foreground service)
 - Audio interruptions (calls/Siri), route changes (headphone/Bluetooth
   disconnect) handled without crashes, playback resumption where supported
-- Playback resilience: bounded automatic network retry (exponential backoff for
-  transient failures), a stall watchdog that transparently re-prepares remote
-  streams, and crash-safe session persistence/resumption (unit tested)
 - Subsonic / OpenSubsonic streaming from your own server (token auth,
   bitrate/transcode settings, real ping validation)
 - Dark/light theme following the system, responsive layouts (iPhone/iPad,
   portrait/landscape), accessibility labels on all player controls
 
+## Stability mechanisms (Phase 1)
+
+- **Playback watchdog**: the KMP `PlaybackController` re-prepares a remote
+  stream that stalls (bounded, per-track recovery budget) and the Android
+  `PlayerService` escalates *seek-resume → re-prepare → reload item → skip
+  track* through `WatchdogPolicy` when playback freezes or buffers forever.
+  Toggle in Settings → Player.
+- **Crash-safe playback recovery**: the service continuously snapshots
+  queue/position/play-state (`PlaybackRecoveryStore`); after a process kill or
+  crash, the service restores and resumes automatically (setting *Resume after
+  restart*). The KMP player persists its session through
+  `KeyValuePlaybackPersister`.
+- **Auto network retry**: stream re-resolution retries with jittered
+  exponential backoff (`RetryPolicy.Playback` for Android, bounded retry on
+  transient failures in the KMP controller); `RecoveryPolicy` falls over to
+  the next available server before skipping.
+- **Cache validation**: Android's `CacheUtils` and the KMP `CacheValidator`
+  wrap entries in timestamped, SHA-256-checked envelopes; stale/corrupt
+  entries are purged instead of decoded (stream URLs go stale after 6h by
+  default).
+- **Download/extension corruption detection**: finished downloads get a
+  `*.echo.sha256` sidecar that is verified before playback (corrupted files
+  fall back to streaming); extension APKs are size + ZIP-header sniffed before
+  the parser runs, and WorkManager retries interrupted download sessions with
+  backoff once connectivity returns.
+
+## Audio features (Phase 5)
+
+Dip-style crossfade (0–12s, Settings → Audio & Sleep), ReplayGain track/album
+normalization with peak limiter, and a crash-safe sleep timer with a linear
+15s fade-out — all implemented once in `domain/` (pure, unit tested) and
+applied by the KMP player; the Android media3 app got the sleep-timer fade in
+its existing sleep command. Gapless playback remains the platform default
+(ExoPlayer / AVPlayer).
+
+## Ecosystem (Phase 7)
+
+- **Android Auto**: browse home/library/search/albums/playlists per extension
+  with real paging, plus media-button focus handling.
+- **Wear OS** (`wearApp/`): transport controls + now-playing card via the
+  Wearable Message API (`/echo/command`, `/echo/state`).
+- **Chromecast**: when a cast session is active (system media output picker),
+  Echo mirrors the current track's direct stream URL to the receiver and
+  forwards transport/seek controls; un-mirrors on session end
+  (Settings → *Chromecast support*).
+- **AirPlay / CarPlay audio (iOS)**: native `AVRoutePickerView` in the player
+  row, `AVAudioSession` route-change handling; the now-playing snapshot is
+  published to `UserDefaults` (`echo.nowplaying`) for widgets / Live
+  Activities / a CarPlay template extension to consume.
+
 ## Requirements
 
 - **Android**: Android Studio, JDK 17, Android SDK 36. Min SDK 24.
-- **iOS**: macOS with Xcode 16+, JDK 17 (for the Kotlin framework),
+- **iOS**: macOS with Xcode 15+, JDK 17 (for the Kotlin framework),
   iOS 15.0+ deployment target, iPhone & iPad.
 
-## Development
+## Building
+
+Prerequisites: JDK 17, Android SDK (for `app-android`/`wearApp`), Xcode 15+
+(for `app-ios`), everything else via the Gradle wrapper.
 
 ```bash
-# shared unit tests (queue/shuffle/repeat/downloads/…)
-# :composeApp uses the AGP Kotlin-multiplatform library plugin, which has no
-# debug/release variants, so there is no `testDebugUnitTest` task. The shared
-# tests in src/commonTest are executed by the Kotlin/Native targets, i.e. on
-# macOS. (Android host tests are not enabled for :composeApp; enabling them in
-# composeApp/build.gradle.kts would add a JVM-side `testAndroidHostTest` task
-# that also runs on Linux.)
-./gradlew :composeApp:iosSimulatorArm64Test # on macOS
-
-# Android
-./gradlew :app:assembleDebug        # debug APK
-./gradlew :app:assembleNightly      # nightly APK
-./gradlew :app:assembleStable       # release APK
-
-# iOS framework (macOS only: the Kotlin/Native iOS targets are disabled on
-# Linux/Windows, where these tasks silently produce nothing)
-./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
-
-# iOS app (macOS)
-open iosApp/iosApp.xcodeproj   # scheme "iosApp", pick a simulator, Cmd+R
-
-# everything CI does, locally
-./scripts/verify.sh
+./scripts/verify.sh            # static checks + tests + builds
+./gradlew :app-android:assembleDebug   # phone APK
+./gradlew :app-android:assembleNightly # nightly APK
+./gradlew :app-android:assembleStable  # stable/release APK
+./gradlew :wearApp:assembleDebug       # watch APK
+./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64  # macOS
+open app-ios/iosApp/iosApp.xcodeproj   # then Build in Xcode
 ```
 
 ## Building the iOS app from the command line
 
 ```bash
 SIMULATOR=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | sed 's/ *$//')
-xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+xcodebuild -project app-ios/iosApp/iosApp.xcodeproj -scheme iosApp \
   -configuration Debug \
   -destination "platform=iOS Simulator,name=$SIMULATOR" \
   -derivedDataPath build/DerivedData \
@@ -179,6 +196,14 @@ Never commit certificates, profiles or passwords; `.gitignore` blocks them.
 > target yet. No desktop CI workflow is added because there is no desktop
 > target to build; see the roadmap below.
 
+## Extension compatibility
+
+The `:common` artifact API is the contract for third-party extensions loaded
+via `DexClassLoader`. **It is frozen**: new code in this repository never
+changes signatures or serialization names in `common/` (enforced by
+`scripts/verify.sh` step 4). Built-in extensions (Offline library, Subsonic)
+use exactly the same API surface as external ones.
+
 ## Privacy & security
 
 See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy. Summary:
@@ -201,18 +226,19 @@ See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy. Summary
 
 ## Roadmap (post-KMP migration)
 
-The repository is a two-app Kotlin Multiplatform build (native Android Views
-app + Compose Multiplatform iOS app over one shared `:composeApp` core). The
-following are natural next steps, tracked separately:
+The repository is a three-app Kotlin Multiplatform build (native Android Views
+app, Compose Multiplatform iOS app over one shared `:composeApp` core, and a
+Wear OS companion). The following are natural next steps, tracked separately:
 
 1. **Unify the Android UI** onto the shared Compose Multiplatform UI (today
-   Android uses the legacy View/Fragment UI in `app/`).
+   Android uses the legacy View/Fragment UI in `app-android/`).
 2. **Desktop target** — add a JVM/desktop target to `:composeApp` and a
    desktop CI workflow + installer artifacts.
-3. **WearOS / watchOS / CarPlay / Chromecast surfaces** on top of the shared
-   queue + playback state and the platform media-session integrations.
-4. **Full audio-effects surface** (equalizer, ReplayGain, normalization,
-   crossfade/gapless) across both platform engines.
+3. **CarPlay template + iOS App Extension** — the now-playing data contract
+   (`echo.nowplaying`) is in place; the ActivityKit/CarPlay appex needs
+   provisioning + pbxproj target work.
+4. **Full audio-effects surface** (equalizer, normalization presets) across
+   both platform engines on top of the existing crossfade/ReplayGain.
 5. **DEX extensions on Android remain** the primary third-party content path;
    built-in Local + Subsonic extensions cover iOS and are the reference for
    adding more built-ins.
@@ -232,3 +258,7 @@ attribution requirements. Upstream project: [brahmkshatriya/echo](https://github
    provided interfaces (`PlayerEngine`, `HttpClient`, `MusicStorage`,
    `MetadataReader`, `KeyValueStore`, `EchoLogger`)
 4. No TODOs or placeholder implementations in production code paths
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for module responsibilities and data
+flow, [`SECURITY.md`](SECURITY.md) for the disclosure policy, and
+[`CHANGELOG.md`](CHANGELOG.md) for release notes.

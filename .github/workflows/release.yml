@@ -47,22 +47,28 @@ jobs:
 
       - name: Run shared unit tests
         run: |
-          TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
-            | grep -oE 'test(Debug|Release)UnitTest' | sort -u || true)
-          if [ -n "$TEST_TASKS" ]; then
-            ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') :composeApp:iosSimulatorArm64Test --stacktrace
-          else
-            ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
-          fi
+          set -o pipefail
+          ./gradlew :shared:jvmTest :core:jvmTest :domain:jvmTest :data:jvmTest \
+                    :extensions:jvmTest :player:jvmTest \
+                    :app-android:testReleaseUnitTest --stacktrace
 
-      - name: Build Android release APK
-        run: ./gradlew :app:assembleStable --stacktrace
+      - name: Build Android release APK & AAB
+        run: ./gradlew :app-android:assembleStable :app-android:bundleStable --stacktrace
 
       - name: Rename Android artifacts
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/stable/app-stable.apk "dist/Echo-Android-$VERSION_NAME.apk" || \
-            cp app/build/outputs/apk/release/app-release.apk "dist/Echo-Android-$VERSION_NAME.apk"
+          cp app-android/build/outputs/apk/stable/app-stable.apk "dist/Echo-Android-$VERSION_NAME.apk" || \
+            cp app-android/build/outputs/apk/release/app-release.apk "dist/Echo-Android-$VERSION_NAME.apk"
+          cp app-android/build/outputs/bundle/stable/app-stable.aab "dist/Echo-Android-$VERSION_NAME.aab" || true
+          cp app-android/build/outputs/apk/nightly/app-nightly.apk "dist/Echo-Android-$VERSION_NAME-nightly.apk" 2>/dev/null || true
+
+      - name: Generate SBOM (CycloneDX)
+        continue-on-error: true
+        run: |
+          # Phase 8 (security): a CycloneDX SBOM attached to every release.
+          npx -y @cyclonedx/cdxgen -t gradle -o "dist/Echo-SBOM-$VERSION_NAME.json" . || true
+          test -f "dist/Echo-SBOM-$VERSION_NAME.json" && echo "SBOM written" || echo "::warning::SBOM generation skipped"
 
       - name: Select an available iPhone simulator
         run: |
@@ -103,7 +109,7 @@ jobs:
             mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
             echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/release.mobileprovision
             PROVISIONING_PROFILE_SPECIFIER="${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}"
-            xcodebuild -project iosApp/iosApp.xcodeproj \
+            xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
               -scheme iosApp -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath build/iosApp.xcarchive \
@@ -113,7 +119,7 @@ jobs:
               CODE_SIGN_STYLE=Manual \
               MARKETING_VERSION="$VERSION_NAME" \
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-              archive | xcpretty
+              archive
             xcodebuild -exportArchive \
               -archivePath build/iosApp.xcarchive \
               -exportOptionsPlist <(cat <<EOF
@@ -126,11 +132,11 @@ jobs:
           </dict></plist>
           EOF
               ) \
-              -exportPath build/export | xcpretty
+              -exportPath build/export
             cp build/export/*.ipa dist/Echo-iOS-$VERSION_NAME.ipa
           else
             echo "No signing secrets configured — producing UNSIGNED IPA (not App Store installable)."
-            xcodebuild -project iosApp/iosApp.xcodeproj \
+            xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
               -scheme iosApp -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath build/iosApp.xcarchive \
@@ -138,7 +144,7 @@ jobs:
               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
               MARKETING_VERSION="$VERSION_NAME" \
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-              archive | xcpretty
+              archive
             APP_PATH=$(find build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)
             test -n "$APP_PATH" || { echo "No .app in archive"; exit 1; }
             mkdir -p build/ipa/Payload

@@ -13,60 +13,79 @@ QUICK=0
 
 echo "==> Static checks"
 
-echo "  [1/6] No Android/JVM-only imports in commonMain"
-# `androidx.compose.*` is Compose Multiplatform: the same package name is used
-# on Android, desktop and iOS, so it is *not* a platform leak. Everything else
-# under android/androidx plus java/javax/okhttp3 is JVM-only and must not
-# appear in commonMain.
-if grep -rn --include='*.kt' -E '^\s*import (android\.|androidx\.|java\.|javax\.|okhttp3\.)' \
-    common/src/commonMain/kotlin composeApp/src/commonMain/kotlin \
-    | grep -vE '^\S+:[0-9]+:\s*import androidx\.compose\.'; then
+echo "  [1/7] No Android/JVM-only imports in any commonMain source set"
+# androidx.compose / lifecycle / navigation / datastore are multiplatform-safe;
+# everything below is Android-or-JVM only.
+if grep -rn --include='*.kt' -E '^\s*import (android\.|java\.|javax\.|okhttp3\.|androidx\.(media3|appcompat|fragment|preference|room|activity|work|palette|recyclerview|swiperefresh|splashscreen|paging\.android))' \
+    common/src/commonMain/kotlin shared/src/commonMain/kotlin core/src/commonMain/kotlin \
+    domain/src/commonMain/kotlin data/src/commonMain/kotlin extensions/src/commonMain/kotlin \
+    player/src/commonMain/kotlin composeApp/src/commonMain/kotlin; then
   echo "ERROR: platform imports found in commonMain"; exit 1
 fi
 echo "        OK"
 
-echo "  [2/6] No production TODO/FIXME/NotImplementedError"
+echo "  [2/7] No production TODO/FIXME/NotImplementedError"
 if grep -rn --include='*.kt' -E '(TODO\(|FIXME|NotImplementedError|error\("not implemented)' \
-    common/src composeApp/src/commonMain composeApp/src/androidMain composeApp/src/iosMain \
-    | grep -v 'common/src/commonMain/kotlin/dev/brahmkshatriya/echo/common/README.md'; then
+    common/src shared/src core/src domain/src data/src extensions/src player/src \
+    composeApp/src app-android/src wearApp/src 2>/dev/null | grep -v '/build/'; then
   echo "ERROR: unfinished markers found (see above)"; exit 1
 fi
 echo "        OK"
 
-echo "  [3/6] No secrets / signing material tracked by git"
+echo "  [3/7] No secrets / signing material tracked by git"
 if git ls-files | grep -Ei '\.(p12|mobileprovision|pem|key|jks|keystore)$|google-services\.json|credentials'; then
   echo "ERROR: potential secrets tracked by git"; exit 1
 fi
 echo "        OK"
 
-echo "  [4/6] Xcode project structure"
-test -f iosApp/iosApp.xcodeproj/project.pbxproj
-test -f iosApp/iosApp/Info.plist
-test -f iosApp/Configuration/Config.xcconfig
+echo "  [4/7] Extension API (common/) stability guard"
+# The published `dev.brahmkshatriya.echo:common` artifact is consumed by
+# third-party extension APKs; its public signatures must never change in a
+# breaking way on this branch.
+BASE_REF="${BASE_REF:-origin/main}"
+if git rev-parse --verify -q "$BASE_REF" >/dev/null; then
+  CHANGED_API=$(git diff --name-only "$BASE_REF"...HEAD -- common/ || true)
+  if [[ -n "${CHANGED_API:-}" && "${ALLOW_COMMON_CHANGES:-0}" != "1" ]]; then
+    echo "ERROR: common/ (public extension API) changed in this branch:"
+    echo "$CHANGED_API"
+    echo "Revert or set ALLOW_COMMON_CHANGES=1 after careful review."
+    exit 1
+  fi
+  echo "        OK (no changes under common/)"
+else
+  echo "        (base ref $BASE_REF unavailable; skipping)"
+fi
+
+echo "  [5/7] Xcode project structure"
+test -f app-ios/iosApp/iosApp.xcodeproj/project.pbxproj
+test -f app-ios/iosApp/iosApp/Info.plist
+test -f app-ios/iosApp/Configuration/Config.xcconfig
 python3 - <<'EOF'
 import re
-content = open("iosApp/iosApp.xcodeproj/project.pbxproj").read()
+content = open("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj").read()
 ids = re.findall(r'\b([0-9A-F]{24})\b', content)
 assert len(ids) > 20, "suspiciously few pbxproj ids"
 assert content.count("{") == content.count("}"), "unbalanced braces"
-print("        OK (pbxproj ids + braces valid)")
+# framework build phase must point at the repo root gradlew after the module move
+assert '../../gradlew' in content, "pbxproj gradlew path not updated for app-ios layout"
+print("        OK (pbxproj ids + braces + gradle path valid)")
 EOF
 
 # CI invokes `xcodebuild -scheme iosApp`, which only works from a *shared*
 # scheme: user schemes live in xcuserdata/ and are never committed.
-SCHEME="iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme"
+SCHEME="app-ios/iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme"
 test -f "$SCHEME" || { echo "ERROR: no shared scheme at $SCHEME"; exit 1; }
 python3 - <<'EOF'
 import re
 import xml.etree.ElementTree as ET
 
-SCHEME = "iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme"
+SCHEME = "app-ios/iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme"
 root = ET.parse(SCHEME).getroot()
 for action in ("BuildAction", "TestAction", "LaunchAction", "ArchiveAction"):
     assert root.find(action) is not None, f"scheme is missing {action}"
 
 # Every BlueprintIdentifier in the scheme must be a real target in the project.
-pbxproj = open("iosApp/iosApp.xcodeproj/project.pbxproj").read()
+pbxproj = open("app-ios/iosApp/iosApp.xcodeproj/project.pbxproj").read()
 known = set(re.findall(r'\b([0-9A-F]{24})\b', pbxproj))
 refs = [r.get("BlueprintIdentifier") for r in root.iter("BuildableReference")]
 assert refs, "scheme declares no BuildableReference"
@@ -80,10 +99,10 @@ print("        OK (shared scheme valid: %s)" % ", ".join(sorted(names)))
 EOF
 
 if command -v plutil >/dev/null 2>&1; then
-  plutil -lint iosApp/iosApp/Info.plist
+  plutil -lint app-ios/iosApp/iosApp/Info.plist
 fi
 
-echo "  [5/6] GitHub workflow YAML parse"
+echo "  [6/7] GitHub workflow YAML parse"
 python3 - <<'EOF'
 try:
     import yaml
@@ -97,41 +116,24 @@ for path in glob.glob(".github/workflows/*.yml"):
     print(f"        OK {path}")
 EOF
 
-echo "  [6/6] iOS Info.plist: background audio + Compose high-refresh opt-in"
-grep -q "UIBackgroundModes" iosApp/iosApp/Info.plist
-grep -q "<string>audio</string>" iosApp/iosApp/Info.plist
+echo "  [7/7] Background audio + Compose high-refresh opt-in on iOS"
+grep -q "UIBackgroundModes" app-ios/iosApp/iosApp/Info.plist
+grep -q "<string>audio</string>" app-ios/iosApp/iosApp/Info.plist
 # ComposeUIViewController throws IllegalStateException at startup without this.
-grep -q "CADisableMinimumFrameDurationOnPhone" iosApp/iosApp/Info.plist
-grep -A1 "CADisableMinimumFrameDurationOnPhone" iosApp/iosApp/Info.plist | grep -q "<true/>"
+grep -q "CADisableMinimumFrameDurationOnPhone" app-ios/iosApp/iosApp/Info.plist
+grep -A1 "CADisableMinimumFrameDurationOnPhone" app-ios/iosApp/iosApp/Info.plist | grep -q "<true/>"
 echo "        OK"
 
 if command -v ./gradlew >/dev/null 2>&1; then
-  echo "==> Gradle: shared modules (Android targets)"
-  # :composeApp uses the AGP Kotlin-multiplatform library plugin: it has no
-  # variant assemble tasks (no `assembleDebug`), only the lifecycle `assemble`.
-  ./gradlew :common:assemble :composeApp:assemble --stacktrace
-
-  echo "==> Gradle: shared unit tests"
-  # `com.android.kotlin.multiplatform.library` has no debug/release variants, so
-  # the classic `testDebugUnitTest` name only exists when Android host tests are
-  # enabled. Discover whatever the plugin actually provides instead of
-  # hard-coding a task name that may not exist.
-  TEST_TASKS=$(./gradlew -q :composeApp:tasks --all 2>/dev/null \
-    | grep -oE 'test(Debug|Release)UnitTest|testAndroidHostTest' | sort -u || true)
-  if [ -n "$TEST_TASKS" ]; then
-    echo "    test tasks: $(echo "$TEST_TASKS" | tr '\n' ' ')"
-    ./gradlew $(echo "$TEST_TASKS" | sed 's|^|:composeApp:|' | tr '\n' ' ') --stacktrace
-  else
-    # Until Android host tests are enabled, src/commonTest is only executed by
-    # the Kotlin/Native targets -- i.e. by `iosSimulatorArm64Test` (iOS CI, and
-    # the macOS section below). Say so loudly rather than pretending we tested.
-    echo "    WARN: :composeApp exposes no Android unit-test task."
-    echo "          src/commonTest runs via :composeApp:iosSimulatorArm64Test (macOS only)."
-  fi
-
+  echo "==> Gradle: shared module JVM tests + Android compilation"
+  ./gradlew :shared:jvmTest :core:jvmTest :domain:jvmTest :data:jvmTest \
+            :extensions:jvmTest :player:jvmTest \
+            :common:assemble :shared:assemble :core:assemble :domain:assemble \
+            :data:assemble :extensions:assemble :player:assemble :composeApp:assemble \
+            --stacktrace
   if [[ "$QUICK" == "0" ]]; then
-    echo "==> Gradle: Android app regression build"
-    ./gradlew :app:assembleDebug --stacktrace
+    echo "==> Gradle: Android app + Wear app regression build"
+    ./gradlew :app-android:assembleDebug :wearApp:assembleDebug --stacktrace
   fi
 else
   echo "==> Gradle wrapper not executable; run: chmod +x ./gradlew"
@@ -140,10 +142,12 @@ fi
 if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "==> Gradle: iOS framework + native tests"
   ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 \
-            :composeApp:iosSimulatorArm64Test --stacktrace
+            :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test \
+            :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test \
+            :extensions:iosSimulatorArm64Test --stacktrace
   echo "==> Xcode: build the iOS app for the simulator"
   SIMULATOR=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | sed 's/[[:space:]]*$//')
-  xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
+  xcodebuild -project app-ios/iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
     -destination "platform=iOS Simulator,name=$SIMULATOR" \
     -derivedDataPath build/DerivedData \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
@@ -152,4 +156,3 @@ else
 fi
 
 echo "All verifications passed."
-# CI retry marker

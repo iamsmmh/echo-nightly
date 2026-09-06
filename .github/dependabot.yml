@@ -12,6 +12,9 @@ updates:
         patterns:
           - "org.jetbrains.kotlin*"
           - "com.android*"
+      kotlinx:
+        patterns:
+          - "org.jetbrains.kotlinx*"
       media3:
         patterns:
           - "androidx.media3*"

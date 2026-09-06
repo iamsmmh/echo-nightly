@@ -26,12 +26,20 @@ kotlin {
         binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // Business logic lives in :shared/:core/:domain/:data/:extensions/:player
+            // and is linked into this framework transitively.
         }
     }
 
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":common"))
+            api(project(":common"))
+            api(project(":shared"))
+            api(project(":core"))
+            api(project(":domain"))
+            api(project(":data"))
+            api(project(":extensions"))
+            api(project(":player"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
@@ -44,9 +52,6 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
-        }
-        androidMain.dependencies {
-            implementation(libs.bundles.media3)
         }
     }
 }

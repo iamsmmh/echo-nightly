@@ -37,7 +37,7 @@ jobs:
       - name: Build release AAB
         run: |
           set -o pipefail
-          ./gradlew bundleRelease \
+          ./gradlew :app-android:bundleRelease \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
             -Pandroid.injected.signing.key.alias=key0 \
@@ -46,7 +46,7 @@ jobs:
 
       - name: Verify bundle produced
         run: |
-          AAB=$(find app/build/outputs/bundle -name '*.aab' | head -1)
+          AAB=$(find app-android/build/outputs/bundle -name '*.aab' | head -1)
           test -n "$AAB" && echo "Bundle: $AAB"
 
       - name: Upload AAB artifact
@@ -54,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Echo-Android-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app-android/build/outputs/bundle/release/app-release.aab

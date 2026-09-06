@@ -33,6 +33,9 @@ jobs:
           distribution: 'zulu'
           java-version: 17
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       # Extraction needs an instrumented build. For a Gradle/Kotlin repo this
       # means letting CodeQL drive the build (autobuild), NOT a `build-mode:
       # none` + out-of-band Gradle call (which yields no source). The Compose
@@ -41,6 +44,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v4

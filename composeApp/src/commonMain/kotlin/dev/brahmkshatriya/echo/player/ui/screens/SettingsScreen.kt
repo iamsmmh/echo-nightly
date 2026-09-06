@@ -1,6 +1,7 @@
 package dev.brahmkshatriya.echo.player.ui.screens
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,10 +14,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +31,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.brahmkshatriya.echo.player.di.AppGraph
+import dev.brahmkshatriya.echo.player.domain.formatMs
+import kotlinx.coroutines.delay
 import dev.brahmkshatriya.echo.player.platform.audioCapabilities
 
 /** Shared settings screen (platform specific options are added per platform). */
@@ -90,6 +96,26 @@ fun SettingsScreen(graph: AppGraph) {
                 graph.settings.update { it.copy(transcodeFormat = if (value) "mp3" else "raw") }
             }
         )
+
+        SettingsSection("Audio & Sleep")
+        CrossfadeRow(graph, settings.crossfadeMs)
+        ToggleRow(
+            title = "Normalize volume (track)",
+            subtitle = "ReplayGain track mode with limiter",
+            checked = settings.replayGainMode == 1,
+            onChecked = { on ->
+                graph.settings.update { it.copy(replayGainMode = if (on) 1 else 0) }
+            }
+        )
+        ToggleRow(
+            title = "Normalize volume (album)",
+            subtitle = "ReplayGain album mode (falls back to track)",
+            checked = settings.replayGainMode == 2,
+            onChecked = { on ->
+                graph.settings.update { it.copy(replayGainMode = if (on) 2 else 0) }
+            }
+        )
+        SleepTimerRow(graph, settings.sleepTimerMinutes)
 
         SettingsSection("Storage")
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -157,6 +183,68 @@ private fun ToggleRow(
             enabled = enabled,
             modifier = Modifier.semantics { contentDescription = title }
         )
+    }
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+@Composable
+private fun CrossfadeRow(graph: AppGraph, crossfadeMs: Long) {
+    var seconds by remember(crossfadeMs) { mutableStateOf(crossfadeMs / 1000f) }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            if (seconds < 1f) "Crossfade: off" else "Crossfade: ${seconds.toInt()}s",
+            style = MaterialTheme.typography.titleSmall
+        )
+        Text(
+            "Dips the outgoing track while the next one starts",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Slider(
+            value = seconds,
+            onValueChange = { seconds = it },
+            onValueFinished = {
+                val millis = (seconds.toInt() * 1000).toLong()
+                graph.settings.update { current -> current.copy(crossfadeMs = millis) }
+            },
+            valueRange = 0f..12f,
+            steps = 11,
+            modifier = Modifier.semantics { contentDescription = "Crossfade seconds" }
+        )
+    }
+}
+
+@Composable
+private fun SleepTimerRow(graph: AppGraph, activeMinutes: Int) {
+    val snapshot by graph.sleepTimer.snapshot.collectAsState()
+    // Re-tick once per second while active to update the countdown label.
+    var nowTick by remember { mutableStateOf(0L) }
+    LaunchedEffect(snapshot.isActive) {
+        while (snapshot.isActive) {
+            nowTick = dev.brahmkshatriya.echo.player.domain.nowEpochMs()
+            delay(1_000)
+        }
+    }
+    val remaining = dev.brahmkshatriya.echo.player.audiofx.SleepStateMachine
+        .remainingMs(snapshot, nowTick)
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            if (snapshot.isActive) "Sleep timer: ${formatMs(remaining)} left"
+            else "Sleep timer",
+            style = MaterialTheme.typography.titleSmall
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(15, 30, 45, 60).forEach { minutes ->
+                TextButton(
+                    onClick = { graph.startSleepTimer(minutes) },
+                    modifier = Modifier.semantics { contentDescription = "Sleep in $minutes minutes" }
+                ) { Text("${minutes}m") }
+            }
+            TextButton(
+                onClick = { graph.startSleepTimer(0) },
+                modifier = Modifier.semantics { contentDescription = "Disable sleep timer" }
+            ) { Text("Off") }
+        }
     }
     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 }
