@@ -149,10 +149,12 @@ class FavoritesRepository(private val store: KeyValueStore) {
     val favorites: kotlinx.coroutines.flow.StateFlow<List<TrackRef>> = _favorites
 
     init {
-        val raw = store.getString(KEY) ?: return
-        runCatching { json.decodeFromString(listSerializer, raw) }
-            .onSuccess { _favorites.value = it }
-            .onFailure { store.remove(KEY) }
+        val raw = store.getString(KEY)
+        if (raw != null) {
+            runCatching { json.decodeFromString(listSerializer, raw) }
+                .onSuccess { _favorites.value = it }
+                .onFailure { store.remove(KEY) }
+        }
     }
 
     fun isFavorite(trackKey: String): Boolean = _favorites.value.any { it.key == trackKey }
@@ -188,10 +190,12 @@ class HistoryRepository(private val store: KeyValueStore) {
     val history: kotlinx.coroutines.flow.StateFlow<List<HistoryEntry>> = _history
 
     init {
-        val raw = store.getString(KEY) ?: return
-        runCatching { json.decodeFromString(listSerializer, raw) }
-            .onSuccess { _history.value = it }
-            .onFailure { store.remove(KEY) }
+        val raw = store.getString(KEY)
+        if (raw != null) {
+            runCatching { json.decodeFromString(listSerializer, raw) }
+                .onSuccess { _history.value = it }
+                .onFailure { store.remove(KEY) }
+        }
     }
 
     fun record(ref: TrackRef, msPlayed: Long) {
