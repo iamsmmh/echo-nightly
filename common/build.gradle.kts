@@ -57,7 +57,10 @@ kotlin {
                 api(libs.protobuf.java)
             }
         }
-        val iosMain by getting
+        // NOTE: src/iosMain sources are wired automatically by the default
+        // hierarchy template (iosArm64/iosX64/iosSimulatorArm64); do not
+        // reference the source set here — it does not exist yet at this
+        // point of evaluation.
     }
 }
 
