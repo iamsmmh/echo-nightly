@@ -108,6 +108,10 @@ object EchoIosBridge {
     fun libraryCount(): Long = IosApplication.graph.library.tracks.value.size.toLong()
 
     fun activeExtensionId(): String? = IosApplication.graph.extensions.activeExtensionId
+
+    /** The current AVAudioSession category (used by the iOS tests). */
+    fun audioSessionCategory(): String =
+        platform.AVFoundation.AVAudioSession.sharedInstance().category
 }
 
 /** Presents the iOS document picker (Files app) for audio import. */

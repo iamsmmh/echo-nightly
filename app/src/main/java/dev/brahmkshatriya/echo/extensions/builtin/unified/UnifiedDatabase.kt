@@ -69,7 +69,7 @@ abstract class UnifiedDatabase : RoomDatabase() {
         calendar.time = java.util.Date()
         return Date(
             year = calendar.get(Calendar.YEAR),
-            month = calendar.get(Calendar.MONTH),
+            month = calendar.get(Calendar.MONTH) + 1, // Calendar months are 0-based
             day = calendar.get(Calendar.DAY_OF_MONTH),
         )
     }

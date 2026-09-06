@@ -34,6 +34,8 @@ import platform.AVFoundation.AVPlayerTimeControlStatusPlaying
 import platform.AVFoundation.AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
 import platform.AVFoundation.AVURLAsset
 import platform.CoreMedia.CMTime
+import platform.CoreMedia.CMTimeMake
+import platform.CoreMedia.CMTimeRangeGetEnd
 import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
@@ -317,7 +319,7 @@ class IosAudioPlayer(
 
     private fun attachTimeObserver(current: AVPlayer) {
         timeObserverToken = current.addPeriodicTimeObserverForInterval(
-            interval = CMTime(value = 1, timescale = 2),
+            interval = CMTimeMake(value = 1, timescale = 2),
             queue = null
         ) { _ -> scope.launch { publishTick() } }
     }

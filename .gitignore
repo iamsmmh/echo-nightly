@@ -9,3 +9,24 @@
 .cxx
 local.properties
 .kotlin
+
+# iOS / Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+iosApp/build/
+Pods/
+*.ipa
+*.dSYM.zip
+*.dSYM
+# Signing material — never commit
+*.p12
+*.mobileprovision
+*.p8
+*.jks
+*.keystore
+signing-key.jks
+# Kotlin/Native
+.kotlin/
+composeApp/build/
+common/build/

@@ -1,0 +1,55 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch: { }
+
+jobs:
+  build:
+    name: Build & Test Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build common + composeApp (Android targets)
+        run: ./gradlew :common:assemble :composeApp:assembleDebug --stacktrace
+
+      - name: Run shared unit tests (commonTest via Android target)
+        run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
+
+      - name: Build the Android app (regression check)
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload app APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android-test-results
+          path: composeApp/build/test-results/**/*.xml

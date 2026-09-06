@@ -23,7 +23,9 @@ data class Date(
         month: Int? = null,
         day: Int? = null,
     ) : this(
-        LocalDate(year, month ?: 1, day ?: 1)
+        runCatching {
+            LocalDate(year, (month ?: 1).coerceIn(1, 12), (day ?: 1).coerceIn(1, 31))
+        }.getOrElse { LocalDate(year, 1, 1) }
             .atStartOfDayIn(TimeZone.currentSystemDefault())
             .toEpochMilliseconds()
     )

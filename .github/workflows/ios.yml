@@ -1,0 +1,152 @@
+name: iOS CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - 'common/**'
+      - 'composeApp/**'
+      - 'iosApp/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch: { }
+
+jobs:
+  build:
+    name: iOS framework, simulator build & unsigned IPA
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    env:
+      VERSION_NAME: "3.0.${{ github.run_number }}"
+      BUILD_NUMBER: "${{ github.run_number }}"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Show Xcode & simulators
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | head -30
+
+      - name: Select an available iPhone simulator
+        run: |
+          SIMULATOR=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | sed 's/[[:space:]]*$//')
+          if [ -z "$SIMULATOR" ]; then
+            echo "No iPhone simulator found"; exit 1
+          fi
+          echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
+          echo "Using simulator: $SIMULATOR"
+
+      - name: Compile Kotlin for iOS targets
+        run: |
+          ./gradlew :composeApp:compileKotlinIosArm64 \
+                    :composeApp:compileKotlinIosSimulatorArm64 \
+                    :composeApp:compileKotlinIosX64 \
+                    :common:compileKotlinIosArm64 --stacktrace
+
+      - name: Link debug frameworks (simulator + device)
+        run: |
+          ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 \
+                    :composeApp:linkDebugFrameworkIosArm64 --stacktrace
+
+      - name: Run shared unit tests on iOS simulator
+        run: ./gradlew :composeApp:iosSimulatorArm64Test --stacktrace
+
+      - name: Build iOS app for the simulator (Xcode project build)
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build | xcpretty
+
+      - name: Run iOS host tests (XCTest, launches the app in the simulator)
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            test | xcpretty
+
+      - name: Archive unsigned app (generic iOS device, unsigned for sideloading)
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/iosApp.xcarchive \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            archive | xcpretty
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          APP_PATH=$(find build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Archive did not produce an .app"; exit 1
+          fi
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/Echo.app
+          cd build/ipa
+          /usr/bin/zip -qry Echo-iOS-unsigned.ipa Payload
+          cd ../..
+          # Echo.app.zip artifact
+          cd build/ipa/Payload
+          /usr/bin/zip -qry ../../Echo-iOS-app.zip Echo.app
+          cd ../../..
+          unzip -t build/ipa/Echo-iOS-unsigned.ipa > /dev/null
+          echo "IPA OK"
+          ls -la build/ipa
+
+      - name: Upload unsigned IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-iOS-unsigned-ipa
+          path: build/ipa/Echo-iOS-unsigned.ipa
+
+      - name: Upload Echo.app artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-iOS-app
+          path: build/ipa/Echo-iOS-app.zip
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-iOS-logs
+          path: |
+            build/DerivedData/Logs/**/*.xcactivitylog

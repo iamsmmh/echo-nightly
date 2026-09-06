@@ -50,9 +50,9 @@ class AndroidKeyValueStore(name: String) : KeyValueStore {
 
     override fun getString(key: String): String? = prefs.getString(key, null)
     override fun putString(key: String, value: String?) {
-        prefs.edit().apply {
-            if (value == null) remove(key) else putString(key, value)
-        }.apply()
+        val editor = prefs.edit()
+        if (value == null) editor.remove(key) else editor.putString(key, value)
+        editor.apply()
     }
 
     override fun getLong(key: String): Long = prefs.getLong(key, 0)
@@ -152,7 +152,7 @@ class AndroidHttpClient(private val logger: EchoLogger) : HttpClient {
             val output = java.io.FileOutputStream(file, appendMode)
             val input = connection.inputStream
             try {
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val buffer = ByteArray(8192)
                 var read: Int
                 var written = if (appendMode) base else 0L
                 while (input.read(buffer).also { read = it } >= 0) {
