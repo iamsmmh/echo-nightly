@@ -64,11 +64,21 @@ final class AudioRouteMonitor: ObservableObject {
 
     private func reactivateWithoutOverridingPlaybackIntent() {
         do {
-            try session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothA2DP, .duckOthers])
             try session.setActive(true)
         } catch {
             // A call/Siri interruption may legally deny activation. AVPlayer retries on user play.
         }
+    }
+
+    func handleIncomingCall() {
+        lastEvent = .oldDeviceUnavailable
+        reactivateWithoutOverridingPlaybackIntent()
+    }
+
+    func handleAirPodsSwitch(oldPort: String, newPort: String) {
+        lastEvent = .routeChanged
+        refreshOutputs()
     }
 
     private func refreshOutputs() {

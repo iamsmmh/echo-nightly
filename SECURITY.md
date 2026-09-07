@@ -82,6 +82,16 @@ escaping the app sandbox).
 - **Signing material is never committed** — keystores, provisioning profiles
   and `google-services.json` are injected as CI secrets only (see `.gitignore`
   and `scripts/verify.sh`).
+- **CodeQL** — static analysis runs on every PR and on weekly schedules
+  using `.github/codeql/codeql-config.yml`.
+- **Dependency Review** — `.github/workflows/dependency-review.yml` blocks
+  PRs that add vulnerable dependencies.
+- **Secret Scanning** — `.github/workflows/security.yml` runs Gitleaks
+  on full history weekly; native GitHub secret scanning is also enabled.
+- **SBOM Generation** — `.github/workflows/sbom.yml` produces a CycloneDX
+  SBOM on every release.
+- **Security Advisory** — `.github/security/SECURITY_ADVISORY.md` provides
+  a private vulnerability reporting template.
 
 ## Notes for extension developers
 

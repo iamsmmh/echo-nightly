@@ -226,6 +226,20 @@ abstract class AndroidAutoCallback(
         future.await(context)
     }
 
+    fun restoreQueue(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        items: List<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long
+    ) = scope.future {
+        val new = items.mapNotNull { it }
+        val future = super.onSetMediaItems(
+            mediaSession, controller, new.toMutableList(), startIndex, startPositionMs
+        )
+        future.await(context)
+    }
+
     companion object {
         private const val ROOT = "root"
         private const val LIBRARY = "library"

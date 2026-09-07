@@ -24,6 +24,18 @@ class DownloadIntegrityManager {
     fun verifyResume(file: EchoFile, expectedBytes: Long): Boolean =
         file.exists() && file.length() in 1 until expectedBytes
 
+    fun detectCorruption(file: EchoFile, expectedSha256: String? = null, expectedSize: Long = -1): Boolean {
+        if (!file.exists()) return true
+        if (expectedSize > 0 && file.length() != expectedSize) return true
+        if (expectedSha256 != null) return !verifyChecksum(file, expectedSha256)
+        return DownloadHealthMonitor.inspect(file, expectedSize) == DownloadHealth.CORRUPT
+    }
+
+    fun isOrphanSidecar(file: EchoFile): Boolean {
+        val sidecar = DownloadSupport.sidecarFor(file)
+        return sidecar.exists() && (!file.exists() || file.length() == 0L)
+    }
+
     /**
      * [redownload] must replace the destination (never append unverified bytes). The resulting
      * file is validated before a fresh integrity sidecar is committed.
