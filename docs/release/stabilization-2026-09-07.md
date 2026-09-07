@@ -18,7 +18,7 @@ Common tests cover:
 - incremental offline search and orphan removal;
 - corrupt download replacement and post-repair tamper detection.
 
-The repository's 33 Python architecture/evidence/release helper tests and static checks pass locally. Gradle and Xcode tests could not be executed in this Linux workspace because no JDK or Xcode toolchain is installed; platform CI must therefore be treated as the build authority for this patch.
+The repository's 33 Python architecture/evidence/release helper tests and static checks pass locally. The production-readiness workflow for code checkpoint `1597e4a` also passed every gate: 182 shared JVM tests, 182 iOS-native tests, 10 Android unit tests, 4 Android emulator tests, and 5 app-hosted XCTest tests, all with zero failures/errors/skips. Android, Wear, Compose, and all configured iOS architectures compiled successfully. Evidence: [workflow 34084962453](https://github.com/iamsmmh/echo-nightly/actions/runs/34084962453).
 
 ## Performance characteristics
 
@@ -30,7 +30,7 @@ The repository's 33 Python architecture/evidence/release helper tests and static
 | Integrity verification | existing completion-sidecar check | explicit size/SHA-256/repair workflow; SHA-256 remains streaming on platform implementations |
 | Stream retries | controller-specific bounded retry | reusable serialized recovery with stale-job cancellation and connectivity gating |
 
-The last device startup baseline already recorded in `docs/release/production-readiness.md` is median **2,808 ms**, p95 **2,852 ms**. This patch does not claim a new startup measurement because no Android device was available.
+Workflow 34084962453 recorded five process-cold Android emulator first-frame samples: median **2,790 ms**, p95 **2,834 ms**. This is debug/emulator evidence, not a release build or physical-device certification, and remains above the existing two-second target.
 
 ## Release gates and residual validation
 
