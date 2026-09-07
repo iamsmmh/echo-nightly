@@ -9,12 +9,14 @@
 /* Begin PBXBuildFile section */
 		E1000000000000000000000A /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000A /* iOSApp.swift */; };
 		E1000000000000000000000B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000B /* ContentView.swift */; };
+		E1000000000000000000000D /* AudioRouteMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000011 /* AudioRouteMonitor.swift */; };
 		E1000000000000000000000C /* EchoIosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000C /* EchoIosTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		E2000000000000000000000A /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		E2000000000000000000000B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E2000000000000000000011 /* AudioRouteMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRouteMonitor.swift; sourceTree = "<group>"; };
 		E2000000000000000000000C /* EchoIosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoIosTests.swift; sourceTree = "<group>"; };
 		E2000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E2000000000000000000000E /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 			children = (
 				E2000000000000000000000A /* iOSApp.swift */,
 				E2000000000000000000000B /* ContentView.swift */,
+				E2000000000000000000011 /* AudioRouteMonitor.swift */,
 				E2000000000000000000000D /* Info.plist */,
 			);
 			path = iosApp;
@@ -201,6 +204,7 @@
 			files = (
 				E1000000000000000000000A /* iOSApp.swift in Sources */,
 				E1000000000000000000000B /* ContentView.swift in Sources */,
+				E1000000000000000000000D /* AudioRouteMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

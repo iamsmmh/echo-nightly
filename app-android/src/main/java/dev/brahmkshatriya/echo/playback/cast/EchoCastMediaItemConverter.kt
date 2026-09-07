@@ -15,7 +15,9 @@ class EchoCastMediaItemConverter : MediaItemConverter {
     fun knows(id: String): Boolean = id in originals
     fun localItem(item: MediaItem): MediaItem? = originals[item.mediaId]
     override fun toMediaQueueItem(mediaItem: MediaItem): MediaQueueItem {
-        originals[mediaItem.mediaId] = mediaItem
+        // A handoff remembers the unresolved local item first. Do not overwrite it with
+        // the receiver-safe URL or returning playback to the phone loses extension state.
+        originals.putIfAbsent(mediaItem.mediaId, mediaItem)
         return delegate.toMediaQueueItem(mediaItem).also {
             it.media?.customData?.put("echoCastVersion", 1)
         }
