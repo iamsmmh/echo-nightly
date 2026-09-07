@@ -20,6 +20,8 @@ jobs:
     env:
       VERSION_NAME: ${{ github.event.inputs.version_name || github.ref_name }}
       BUILD_NUMBER: "${{ github.run_number }}"
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      SIGNING_PASSWORD: ${{ secrets.PASSWORD }}
 
     steps:
       - name: Checkout repo
@@ -53,15 +55,31 @@ jobs:
                     :app-android:testReleaseUnitTest --stacktrace
 
       - name: Build Android release APK & AAB
-        run: ./gradlew :app-android:assembleStable :app-android:bundleStable --stacktrace
+        run: |
+          set -o pipefail
+          ARGS=()
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$SIGNING_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+            ARGS+=(
+              "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks"
+              "-Pandroid.injected.signing.store.password=$SIGNING_PASSWORD"
+              "-Pandroid.injected.signing.key.alias=key0"
+              "-Pandroid.injected.signing.key.password=$SIGNING_PASSWORD"
+            )
+          else
+            echo "::notice::No Android signing secrets configured - artifacts will be unsigned"
+          fi
+          python3 scripts/ci_run.py ./gradlew :app-android:assembleStable :app-android:bundleStable "${ARGS[@]}" --stacktrace
 
       - name: Rename Android artifacts
+        # Resolve by variant: AGP appends "-unsigned" when no signing config is
+        # applied, so a hard-coded file name breaks unsigned release runs.
         run: |
           mkdir -p dist
-          cp app-android/build/outputs/apk/stable/app-stable.apk "dist/Echo-Android-$VERSION_NAME.apk" || \
-            cp app-android/build/outputs/apk/release/app-release.apk "dist/Echo-Android-$VERSION_NAME.apk"
-          cp app-android/build/outputs/bundle/stable/app-stable.aab "dist/Echo-Android-$VERSION_NAME.aab" || true
-          cp app-android/build/outputs/apk/nightly/app-nightly.apk "dist/Echo-Android-$VERSION_NAME-nightly.apk" 2>/dev/null || true
+          python3 scripts/android_artifact.py --variant stable --type apk \
+            --destination "dist/Echo-Android-$VERSION_NAME.apk"
+          python3 scripts/android_artifact.py --variant stable --type aab --optional \
+            --destination "dist/Echo-Android-$VERSION_NAME.aab"
 
       - name: Generate SBOM (CycloneDX)
         continue-on-error: true
@@ -157,8 +175,9 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Echo-Release-$VERSION_NAME
+          name: Echo-Release-${{ env.VERSION_NAME }}
           path: dist/*
+          if-no-files-found: error
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

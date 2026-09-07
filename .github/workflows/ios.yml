@@ -23,8 +23,7 @@ on:
   workflow_dispatch: { }
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   build:
@@ -38,15 +37,15 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
-          java-version: 17
+          distribution: temurin
+          java-version: '17'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -59,65 +58,63 @@ jobs:
           xcodebuild -version
           xcrun simctl list devices available | head -30
 
-      - name: Select an available iPhone simulator
-        run: |
-          SIMULATOR=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -1 | sed 's/[[:space:]]*$//')
-          if [ -z "$SIMULATOR" ]; then
-            echo "No iPhone simulator found"; exit 1
-          fi
-          echo "SIMULATOR=$SIMULATOR" >> "$GITHUB_ENV"
-          echo "Using simulator: $SIMULATOR"
-
       - name: Compile Kotlin for iOS targets
         run: |
-          set -o pipefail
-          ./gradlew :composeApp:compileKotlinIosArm64 \
+          python3 scripts/ci_run.py ./gradlew :composeApp:compileKotlinIosArm64 \
                     :composeApp:compileKotlinIosSimulatorArm64 \
                     :composeApp:compileKotlinIosX64 \
-                    :common:compileKotlinIosArm64 --stacktrace 2>&1 | tee /tmp/ci.log
+                    :common:compileKotlinIosArm64 --stacktrace
 
       - name: Link debug frameworks (simulator + device)
         run: |
-          set -o pipefail
-          ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 \
-                    :composeApp:linkDebugFrameworkIosArm64 --stacktrace 2>&1 | tee -a /tmp/ci.log
+          python3 scripts/ci_run.py ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 \
+                    :composeApp:linkDebugFrameworkIosArm64 --stacktrace
 
       - name: Run shared unit tests on iOS simulator
         run: |
-          set -o pipefail
           # Business-logic modules only: composeApp/player K/N test binaries pull
           # the whole Compose runtime into the link step and are covered by the
           # JVM test lane instead.
-          ./gradlew :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test \
+          python3 scripts/ci_run.py ./gradlew :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test \
                     :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test \
-                    :extensions:iosSimulatorArm64Test --stacktrace 2>&1 | tee -a /tmp/ci.log
+                    :extensions:iosSimulatorArm64Test --stacktrace
+
+      - name: Prepare an isolated, booted simulator
+        # Reuses the same helper as the readiness pipeline: XCTest needs a fully
+        # booted device (an app host cannot be installed on a shut-down one),
+        # and Kotlin/Native standalone tests can leave a stale session behind.
+        run: |
+          ./gradlew --stop
+          python3 scripts/ios_test_device.py
 
       - name: Build iOS app for the simulator (Xcode project build)
         run: |
-          set -o pipefail
-          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
+          python3 scripts/ci_run.py xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            build 2>&1 | tee -a /tmp/ci.log
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- \
+            build
 
       - name: Run iOS host tests (XCTest, launches the app in the simulator)
         run: |
-          set -o pipefail
-          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
+          python3 scripts/ci_run.py xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR }}" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            test 2>&1 | tee -a /tmp/ci.log
+            -resultBundlePath build/HostTests.xcresult \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- \
+            test
+
+      - name: XCTest evidence
+        if: ${{ !cancelled() }}
+        run: python3 scripts/xcresult_evidence.py build/HostTests.xcresult
 
       - name: Archive unsigned app (generic iOS device, unsigned for sideloading)
         run: |
-          set -o pipefail
-          xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
+          python3 scripts/ci_run.py xcodebuild -project app-ios/iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Release \
             -destination 'generic/platform=iOS' \
@@ -126,7 +123,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION="$VERSION_NAME" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            archive 2>&1 | tee -a /tmp/ci.log
+            archive
 
       - name: Package unsigned IPA
         run: |
@@ -149,44 +146,13 @@ jobs:
           ls -la build/ipa
 
 
-      - name: Report build errors (attach log to branch + PR comment)
-        if: failure() && github.event_name == 'pull_request'
-        run: |
-          set -e
-          LOG_NAME="ci-failure-${{ github.workflow }}-${{ github.run_number }}.log"
-          # 1) attach the log to the PR branch so it can be inspected offline
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch -q origin "$GITHUB_HEAD_REF"
-          git checkout -q -B log-branch "origin/$GITHUB_HEAD_REF"
-          cp "/tmp/ci.log" ".ci-logs/$LOG_NAME" 2>/dev/null || { mkdir -p .ci-logs; cp /tmp/ci.log ".ci-logs/$LOG_NAME"; }
-          git add -f ".ci-logs/$LOG_NAME"
-          git commit -q -m "ci: attach failure log $LOG_NAME [skip ci]"
-          for i in 1 2 3; do
-            if git push -q origin HEAD:"$GITHUB_HEAD_REF"; then break; fi
-            git fetch -q origin "$GITHUB_HEAD_REF"
-            git rebase -q "origin/$GITHUB_HEAD_REF" || { git rebase --abort; exit 0; }
-          done
-          # 2) also try a PR comment with the digest
-          {
-            echo "### ❌ ${{ github.workflow }} failed (run ${{ github.run_id }})"
-            echo
-            echo '```'
-            tail -n 50 "/tmp/ci.log" 2>/dev/null || true
-            echo '```'
-          } > /tmp/report.md
-          jq -n --rawfile body /tmp/report.md '{body: $body}' > /tmp/payload.json
-          curl -s -o /dev/null -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            -d @/tmp/payload.json || true
       - name: Upload unsigned IPA artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Echo-iOS-unsigned-ipa
           path: build/ipa/Echo-iOS-unsigned.ipa
+          if-no-files-found: warn
 
       - name: Upload Echo.app artifact
         if: always()
@@ -194,6 +160,7 @@ jobs:
         with:
           name: Echo-iOS-app
           path: build/ipa/Echo-iOS-app.zip
+          if-no-files-found: warn
 
       - name: Upload build logs
         if: failure()
@@ -202,3 +169,5 @@ jobs:
           name: Echo-iOS-logs
           path: |
             build/DerivedData/Logs/**/*.xcactivitylog
+            build/verification/
+          if-no-files-found: ignore

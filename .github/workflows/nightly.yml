@@ -9,25 +9,32 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
       GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_B64 }}
       SIGNING_PASSWORD: ${{ secrets.PASSWORD }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
-          java-version: 17
-          cache: 'gradle'
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Compute version
         run: |
@@ -41,8 +48,10 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Cook KeyStore (optional)
-        if: env.KEYSTORE_B64 != ''
-        run: echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+        if: env.KEYSTORE_B64 != '' && env.SIGNING_PASSWORD != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+          echo "SIGNING_KEYSTORE=$GITHUB_WORKSPACE/signing-key.jks" >> "$GITHUB_ENV"
 
       - name: Cook Google Services (optional)
         if: env.GOOGLE_SERVICES_B64 != ''
@@ -55,9 +64,9 @@ jobs:
         run: |
           set -o pipefail
           ARGS=()
-          if [ -n "$SIGNING_PASSWORD" ] && [ -f "$GITHUB_WORKSPACE/signing-key.jks" ]; then
+          if [ -n "${SIGNING_KEYSTORE:-}" ] && [ -s "${SIGNING_KEYSTORE:-/nonexistent}" ]; then
             ARGS+=(
-              "-Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks"
+              "-Pandroid.injected.signing.store.file=$SIGNING_KEYSTORE"
               "-Pandroid.injected.signing.store.password=$SIGNING_PASSWORD"
               "-Pandroid.injected.signing.key.alias=key0"
               "-Pandroid.injected.signing.key.password=$SIGNING_PASSWORD"
@@ -66,14 +75,29 @@ jobs:
           else
             echo "::notice::No signing secrets configured - building unsigned nightly"
           fi
-          ./gradlew :app-android:assembleNightly "${ARGS[@]}" --stacktrace
-          cp app-android/build/outputs/apk/nightly/app-nightly.apk "app-android/build/${VERSION}.apk"
+          python3 scripts/ci_run.py ./gradlew :app-android:assembleNightly "${ARGS[@]}" --stacktrace
+
+      - name: Resolve APK
+        # AGP names the output app-nightly.apk when signed and
+        # app-nightly-unsigned.apk otherwise; resolve whichever exists.
+        run: |
+          python3 scripts/android_artifact.py --variant nightly --type apk \
+            --destination "app-android/build/${VERSION}.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Echo-nightly-${{ env.VERSION }}
-          path: app-android/build/outputs/apk/nightly/app-nightly.apk
+          path: app-android/build/${{ env.VERSION }}.apk
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-nightly-log
+          path: build/verification/
+          if-no-files-found: ignore
 
       - name: Upload APK to Discord
         if: success()
