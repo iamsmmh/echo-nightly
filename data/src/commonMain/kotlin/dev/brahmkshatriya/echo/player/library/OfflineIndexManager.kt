@@ -60,7 +60,17 @@ class OfflineIndexManager<T>(
         return orphanIds
     }
 
-    private fun tokenize(value: String): List<String> = value.lowercase().trim()
-        .split(Regex("[^\\p{L}\\p{N}]+"))
-        .filter { it.isNotBlank() }
+    private fun tokenize(value: String): List<String> {
+        val result = mutableListOf<String>()
+        val token = StringBuilder()
+        value.lowercase().forEach { character ->
+            if (character.isLetterOrDigit()) token.append(character)
+            else if (token.isNotEmpty()) {
+                result += token.toString()
+                token.clear()
+            }
+        }
+        if (token.isNotEmpty()) result += token.toString()
+        return result
+    }
 }
