@@ -77,6 +77,11 @@ class LocalLibraryRepository(
 
     private val _tracks = MutableStateFlow<List<LocalTrackEntry>>(emptyList())
     val tracks: StateFlow<List<LocalTrackEntry>> = _tracks.asStateFlow()
+    private val offlineIndex = OfflineIndexManager<LocalTrackEntry>(
+        idOf = { it.id },
+        termsOf = { listOfNotNull(it.title, it.artist, it.album, it.albumArtist, it.genre) },
+        pathOf = { it.path }
+    )
 
     var revision: Long = 0
         private set
@@ -87,14 +92,13 @@ class LocalLibraryRepository(
 
     fun find(id: String): LocalTrackEntry? = _tracks.value.firstOrNull { it.id == id }
 
-    fun search(query: String): List<LocalTrackEntry> {
-        if (query.isBlank()) return _tracks.value
-        val q = query.trim().lowercase()
-        return _tracks.value.filter {
-            it.title.lowercase().contains(q) ||
-                it.artist.lowercase().contains(q) ||
-                it.album?.lowercase()?.contains(q) == true
-        }
+    fun search(query: String): List<LocalTrackEntry> = offlineIndex.search(query)
+
+    /** Prunes index records for files removed outside Echo and persists the repaired cache. */
+    fun cleanupOrphans(): List<String> {
+        val removed = offlineIndex.removeOrphans()
+        if (removed.isNotEmpty()) persistAndPublish(_tracks.value.filterNot { it.id in removed }, rebuildIndex = false)
+        return removed
     }
 
     fun albums(): List<AlbumGroup> = groupAlbums(_tracks.value)
@@ -146,7 +150,8 @@ class LocalLibraryRepository(
             val list = _tracks.value.toMutableList()
             list.removeAll { it.id == id || it.path == entry.path }
             list.add(entry)
-            persistAndPublish(list)
+            offlineIndex.upsert(entry)
+            persistAndPublish(list, rebuildIndex = false)
             source.delete()
             logger.info(TAG, "Imported ${entry.title} (${entry.fileName})")
             entry
@@ -159,7 +164,8 @@ class LocalLibraryRepository(
             EchoFile(entry.path).delete()
             entry.artworkPath?.let { EchoFile(it).delete() }
         }.onFailure { logger.warn(TAG, "Failed deleting files of $id", it) }
-        persistAndPublish(_tracks.value.filterNot { it.id == id })
+        offlineIndex.remove(id)
+        persistAndPublish(_tracks.value.filterNot { it.id == id }, rebuildIndex = false)
         true
     }
 
@@ -199,16 +205,20 @@ class LocalLibraryRepository(
     private fun load() {
         val raw = store.getString(KEY_INDEX) ?: return
         runCatching { json.decodeFromString(trackListSerializer, raw) }
-            .onSuccess { _tracks.value = it }
+            .onSuccess {
+                _tracks.value = it
+                offlineIndex.rebuild(it)
+            }
             .onFailure {
                 logger.error(TAG, "Corrupt local library index; starting fresh", it)
                 store.remove(KEY_INDEX)
             }
     }
 
-    private fun persistAndPublish(list: List<LocalTrackEntry>) {
+    private fun persistAndPublish(list: List<LocalTrackEntry>, rebuildIndex: Boolean = true) {
         store.putString(KEY_INDEX, json.encodeToString(trackListSerializer, list))
         _tracks.value = list
+        if (rebuildIndex) offlineIndex.rebuild(list)
         revision++
     }
 

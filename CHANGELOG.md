@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — production stabilization
+
+- Added lifecycle-safe Cast session recovery, queue/metadata/position synchronization, and lossless return-to-phone queue conversion.
+- Hardened iOS AirPlay, AirPods, Bluetooth, and speaker route monitoring across route and media-service resets.
+- Added reusable stream recovery state/backoff policy, SHA-256 download repair, incremental offline indexing, equal-power crossfade scheduling, and clipping-safe ReplayGain analysis with common tests.
+- Documented measured performance characteristics and the remaining physical-device/release gates in `docs/release/stabilization-2026-09-07.md`.
+
 All notable changes to Echo Nightly are documented here.
 
 ## [3.0.0] — KMP restructure + stability/audio/ecosystem program
