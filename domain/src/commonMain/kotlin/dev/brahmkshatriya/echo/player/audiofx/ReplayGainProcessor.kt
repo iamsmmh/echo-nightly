@@ -36,7 +36,7 @@ class ReplayGainProcessor(
         preventClipping: Boolean = true
     ): ReplayGain.Gain {
         if (mode == Mode.OFF) return ReplayGain.Gain(1f, 0f)
-        val selected = if (mode == Mode.ALBUM) album ?: track else track ?: album
+        val selected = (if (mode == Mode.ALBUM) album ?: track else track ?: album)
             ?: return ReplayGain.Gain(1f, 0f)
         return ReplayGain.resolve(
             mode = 1,
