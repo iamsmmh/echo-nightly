@@ -99,7 +99,7 @@ abstract class AndroidAutoCallback(
         when (type) {
             ALBUM -> extension.getList<AlbumClient> {
                 val id = parentId.substringAfter("$ALBUM/").substringBefore("/")
-                val unloaded = itemMap[id] as Album
+                val unloaded = itemMap[id] as? Album ?: return@getList emptyList()
                 getTracks(context, extId, id, page) {
                     val album = loadAlbum(unloaded)
                     album to loadTracks(album)
@@ -108,7 +108,7 @@ abstract class AndroidAutoCallback(
 
             PLAYLIST -> extension.getList<PlaylistClient> {
                 val id = parentId.substringAfter("$PLAYLIST/").substringBefore("/")
-                val unloaded = itemMap[id] as Playlist
+                val unloaded = itemMap[id] as? Playlist ?: return@getList emptyList()
                 getTracks(context, extId, id, page) {
                     val playlist = loadPlaylist(unloaded)
                     playlist to loadTracks(playlist)
@@ -117,7 +117,7 @@ abstract class AndroidAutoCallback(
 
             RADIO -> extension.getList<RadioClient> {
                 val id = parentId.substringAfter("$RADIO/").substringBefore("/")
-                val radio = itemMap[id] as Radio
+                val radio = itemMap[id] as? Radio ?: return@getList emptyList()
                 getTracks(context, extId, id, page) {
                     radio to loadTracks(radio)
                 }
@@ -369,7 +369,7 @@ abstract class AndroidAutoCallback(
         private fun getListsItems(
             context: Context, id: String, extId: String
         ) = run {
-            val shelf = listsMap[id]!!
+            val shelf = listsMap[id] ?: return@run emptyList()
             when (shelf) {
                 is Shelf.Lists.Categories -> shelf.list.map { it.toMediaItem(context, extId) }
                 is Shelf.Lists.Items -> shelf.list.map { it.toMediaItem(context, extId) }
@@ -410,7 +410,7 @@ abstract class AndroidAutoCallback(
         private suspend fun getShelfItems(
             context: Context, id: String, extId: String, page: Int
         ): List<MediaItem> {
-            val shelf = shelvesMap[id]!!
+            val shelf = shelvesMap[id] ?: return emptyList()
             val (list, next) = shelf.loadPage(continuations[id to page])
             continuations[id to page + 1] = next
             return listOfNotNull(

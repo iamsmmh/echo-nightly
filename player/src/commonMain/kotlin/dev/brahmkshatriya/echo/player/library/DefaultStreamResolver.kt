@@ -75,28 +75,39 @@ class DefaultStreamResolver(
                 .getOrElse { throw EchoError.Extension("loadTrack failed: ${it.message}", extension.id, it) }
         } else track
 
-        val server = loaded.servers.maxByOrNull { it.quality }
-            ?: throw EchoError.Playback("No streamable server for '${track.title}'")
+        val servers = loaded.servers.sortedByDescending { it.quality }
+        if (servers.isEmpty()) throw EchoError.Playback("No streamable server for '${track.title}'")
 
-        val media = runCatchingCancellable { trackClient.loadStreamableMedia(server, false) }
-            .getOrElse { throw EchoError.Extension("loadStreamableMedia failed: ${it.message}", extension.id, it) }
-
-        return when (media) {
-            is Streamable.Media.Server -> {
-                val source = media.sources.firstOrNull()
-                    ?: throw EchoError.Playback("Stream server has no sources")
-                val http = source as? Streamable.Source.Http
-                    ?: throw EchoError.Playback("Raw streams are not supported on this platform")
-                logger.debug(TAG, "Resolving stream for '${track.title}' from ${sanitizeUrl(http.request.url)}")
-                ResolvedStream(
-                    url = http.request.url,
-                    headers = http.request.headers,
-                    mimeType = null,
-                    source = ResolvedStream.Source.EXTENSION
-                )
+        var lastError: Throwable? = null
+        for (server in servers) {
+            val media = runCatchingCancellable { trackClient.loadStreamableMedia(server, false) }
+                .getOrElse { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    lastError = EchoError.Extension("loadStreamableMedia failed: ${error.message}", extension.id, error)
+                    null
+                } ?: continue
+            when (media) {
+                is Streamable.Media.Server -> {
+                    val httpSources = media.sources.filterIsInstance<Streamable.Source.Http>()
+                    val source = httpSources.firstOrNull()
+                    if (source == null) {
+                        lastError = EchoError.Playback("Stream server has no HTTP sources")
+                        continue
+                    }
+                    logger.debug(TAG, "Resolving stream for '${track.title}' from ${sanitizeUrl(source.request.url)}")
+                    return ResolvedStream(
+                        url = source.request.url,
+                        headers = source.request.headers,
+                        mimeType = null,
+                        source = ResolvedStream.Source.EXTENSION
+                    )
+                }
+                else -> {
+                    lastError = EchoError.Playback("Unsupported streamable media type")
+                }
             }
-            else -> throw EchoError.Playback("Unsupported streamable media type")
         }
+        throw lastError ?: EchoError.Playback("No playable stream for '${track.title}'")
     }
 
     private companion object {

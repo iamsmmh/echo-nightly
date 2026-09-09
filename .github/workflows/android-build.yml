@@ -1,0 +1,75 @@
+name: Android builder
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Validate, test, assemble APK + AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Static checks
+        run: python3 scripts/check.py
+
+      - name: Shared JVM tests
+        run: >
+          python3 scripts/ci_run.py ./gradlew
+          :shared:jvmTest :core:jvmTest :domain:jvmTest :data:jvmTest
+          :extensions:jvmTest :player:jvmTest :app-android:testDebugUnitTest
+          --stacktrace
+
+      - name: Assemble Android release APK and AAB
+        run: >
+          python3 scripts/ci_run.py ./gradlew
+          :app-android:assembleRelease :app-android:bundleRelease
+          :wearApp:assembleRelease --stacktrace
+
+      - name: Resolve artifacts
+        run: |
+          mkdir -p dist
+          python3 scripts/android_artifact.py --variant release --type apk \
+            --destination dist/Echo-Android.apk
+          python3 scripts/android_artifact.py --variant release --type aab \
+            --destination dist/Echo-Android.aab
+          test -f dist/Echo-Android.apk
+          test -f dist/Echo-Android.aab
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-Android
+          path: |
+            dist/Echo-Android.apk
+            dist/Echo-Android.aab
+          if-no-files-found: error

@@ -2,6 +2,8 @@
     <string name="app_name">Echo</string>
     <string name="echo_title_placeholder">Nothing playing</string>
     <string name="echo_artist_placeholder">—</string>
+    <string name="phone_disconnected">Phone not connected</string>
+    <string name="phone_disconnected_hint">Open Echo on your phone</string>
     <string name="action_play_pause">Play or pause</string>
     <string name="action_next">Next track</string>
     <string name="action_previous">Previous track</string>

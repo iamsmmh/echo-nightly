@@ -1,11 +1,10 @@
-package dev.brahmkshatriya.echo.player.core
+package dev.brahmkshatriya.echo.player.core.recovery
 
-import dev.brahmkshatriya.echo.player.core.recovery.StreamRecoveryManager
-import dev.brahmkshatriya.echo.player.core.recovery.StreamFailure
-import dev.brahmkshatriya.echo.player.core.recovery.StreamFailureKind
-import kotlinx.coroutines.runTest
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class StreamingRecoveryRegressionTest {
 
@@ -14,30 +13,37 @@ class StreamingRecoveryRegressionTest {
         val manager = StreamRecoveryManager(this)
         manager.buffering()
         manager.onNetworkLost()
-        assertEquals(dev.brahmkshatriya.echo.player.core.recovery.StreamRecoveryState.RECOVERING, manager.state.value)
+        assertEquals(StreamRecoveryState.RECOVERING, manager.state.value)
     }
 
     @Test
-    fun httpFailureIsRetryable() = runTest {
+    fun httpFailureIsRetryable() {
         val failure = StreamFailure(StreamFailureKind.HTTP, 503)
-        assertEquals(true, failure.retryable)
+        assertTrue(failure.retryable)
     }
 
     @Test
-    fun nonRetryableHttpStatusFails() = runTest {
+    fun nonRetryableHttpStatusFails() {
         val failure = StreamFailure(StreamFailureKind.HTTP, 404)
-        assertEquals(false, failure.retryable)
+        assertFalse(failure.retryable)
     }
 
     @Test
-    fun dnsFailureIsRetryable() = runTest {
+    fun dnsFailureIsRetryable() {
         val failure = StreamFailure(StreamFailureKind.DNS, message = "unknown host")
-        assertEquals(true, failure.retryable)
+        assertTrue(failure.retryable)
     }
 
     @Test
-    fun socketFailureIsRetryable() = runTest {
+    fun socketFailureIsRetryable() {
         val failure = StreamFailure(StreamFailureKind.SOCKET, message = "connection reset")
-        assertEquals(true, failure.retryable)
+        assertTrue(failure.retryable)
+    }
+
+    @Test
+    fun cancelledAndUnauthorizedAreNotRetryable() {
+        assertFalse(StreamFailure(StreamFailureKind.NON_RETRYABLE, 401).retryable)
+        assertFalse(StreamFailure(StreamFailureKind.HTTP, 401).retryable)
+        assertFalse(StreamFailure(StreamFailureKind.HTTP, 404).retryable)
     }
 }

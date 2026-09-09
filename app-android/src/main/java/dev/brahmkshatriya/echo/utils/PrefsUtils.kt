@@ -63,7 +63,15 @@ fun Context.importSettings(uri: Uri) {
         BufferedReader(InputStreamReader(inputStream)).readText()
     } ?: return
 
-    val allPrefsJson = Json.decodeFromString<Map<String, JsonObject>>(jsonString)
+    val allPrefsJson = SettingsBackup.parse(jsonString).getOrElse { error ->
+        throw IllegalArgumentException("Invalid settings file: ${error.message}", error)
+    }
+
+    allPrefsJson.forEach { (prefName, prefMap) ->
+        if (prefMap.values.any { !SettingsBackup.isSupportedValue(it) }) {
+            throw IllegalArgumentException("Unsupported value in preference store '$prefName'")
+        }
+    }
 
     allPrefsJson.forEach { (prefName, prefMap) ->
         getSharedPreferences(prefName, Context.MODE_PRIVATE).edit {
@@ -88,7 +96,7 @@ fun Context.importSettings(uri: Uri) {
                     )
 
                     is JsonNull -> remove(key)
-                    else -> throw IllegalArgumentException("Unsupported type for deserialization: ${value::class.java}")
+                    else -> Unit
                 }
             }
         }

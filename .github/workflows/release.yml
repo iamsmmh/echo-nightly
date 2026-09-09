@@ -11,6 +11,9 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Build & publish Android + unsigned iOS artifacts
@@ -77,9 +80,13 @@ jobs:
         run: |
           mkdir -p dist
           python3 scripts/android_artifact.py --variant stable --type apk \
-            --destination "dist/Echo-Android-$VERSION_NAME.apk"
-          python3 scripts/android_artifact.py --variant stable --type aab --optional \
-            --destination "dist/Echo-Android-$VERSION_NAME.aab"
+            --destination dist/Echo-Android.apk
+          python3 scripts/android_artifact.py --variant stable --type aab \
+            --destination dist/Echo-Android.aab
+          cp dist/Echo-Android.apk "dist/Echo-Android-$VERSION_NAME.apk"
+          cp dist/Echo-Android.aab "dist/Echo-Android-$VERSION_NAME.aab"
+          test -f dist/Echo-Android.apk
+          test -f dist/Echo-Android.aab
 
       - name: Generate SBOM (CycloneDX)
         continue-on-error: true
@@ -167,9 +174,12 @@ jobs:
             test -n "$APP_PATH" || { echo "No .app in archive"; exit 1; }
             mkdir -p build/ipa/Payload
             cp -R "$APP_PATH" build/ipa/Payload/Echo.app
-            (cd build/ipa && /usr/bin/zip -qry "Echo-iOS-$VERSION_NAME-unsigned.ipa" Payload)
-            cp "build/ipa/Echo-iOS-$VERSION_NAME-unsigned.ipa" dist/
-            unzip -t "dist/Echo-iOS-$VERSION_NAME-unsigned.ipa" > /dev/null && echo "IPA valid"
+            (cd build/ipa && /usr/bin/zip -qry Echo-iOS-unsigned.ipa Payload)
+            cp build/ipa/Echo-iOS-unsigned.ipa dist/Echo-iOS-unsigned.ipa
+            cp dist/Echo-iOS-unsigned.ipa "dist/Echo-iOS-$VERSION_NAME-unsigned.ipa"
+            unzip -t dist/Echo-iOS-unsigned.ipa > /dev/null
+            test -f dist/Echo-iOS-unsigned.ipa
+            echo "IPA valid"
           fi
 
       - name: Upload artifacts

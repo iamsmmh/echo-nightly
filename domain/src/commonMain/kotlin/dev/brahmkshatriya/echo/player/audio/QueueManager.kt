@@ -259,7 +259,7 @@ class QueueManager(
         _state.value = _state.value.copy(repeatMode = mode)
     }
 
-    fun cycleRepeatMode(): RepeatMode {
+    suspend fun cycleRepeatMode(): RepeatMode = mutex.withLock {
         val next = when (_state.value.repeatMode) {
             RepeatMode.OFF -> RepeatMode.ALL
             RepeatMode.ALL -> RepeatMode.ONE

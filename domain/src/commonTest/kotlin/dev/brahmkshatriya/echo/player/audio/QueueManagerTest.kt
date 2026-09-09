@@ -171,7 +171,7 @@ class QueueManagerTest {
     }
 
     @Test
-    fun `cycle repeat goes OFF-ALL-ONE-OFF`() {
+    fun `cycle repeat goes OFF-ALL-ONE-OFF`() = kotlinx.coroutines.test.runTest {
         val queue = manager()
         assertEquals(RepeatMode.ALL, queue.cycleRepeatMode())
         assertEquals(RepeatMode.ONE, queue.cycleRepeatMode())

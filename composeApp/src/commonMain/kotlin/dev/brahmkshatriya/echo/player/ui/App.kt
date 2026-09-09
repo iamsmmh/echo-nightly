@@ -15,8 +15,9 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,14 +50,14 @@ import dev.brahmkshatriya.echo.player.ui.screens.QueueScreen
 import dev.brahmkshatriya.echo.player.ui.screens.SearchScreen
 import dev.brahmkshatriya.echo.player.ui.screens.SettingsScreen
 
-/** Top level destinations of the app. */
+/** Primary destinations — same three tabs as the Android nav bar. */
 enum class Dest(val label: String) {
     HOME("Home"),
     SEARCH("Search"),
-    LIBRARY("Library"),
-    EXTENSIONS("Extensions"),
-    SETTINGS("Settings")
+    LIBRARY("Library")
 }
+
+private enum class Overlay { EXTENSIONS, SETTINGS }
 
 /**
  * Root composable of the shared Compose Multiplatform UI. Uses a bottom
@@ -70,6 +71,7 @@ fun EchoApp(graph: AppGraph) {
     EchoTheme(useDarkThemeOverride = appearance.useDarkTheme, amoled = appearance.amoledMode, dynamic = appearance.dynamicTheme) {
         val playback by graph.player.state.collectAsState()
         var dest by remember { mutableStateOf(Dest.HOME) }
+        var overlay by remember { mutableStateOf<Overlay?>(null) }
         var showPlayer by remember { mutableStateOf(false) }
         var showQueue by remember { mutableStateOf(false) }
         val snackbar = remember { SnackbarHostState() }
@@ -113,18 +115,31 @@ fun EchoApp(graph: AppGraph) {
                             onClick = { showPlayer = true },
                             onQueue = { showQueue = true }
                         )
-                        BottomBar(dest) { dest = it }
+                        BottomBar(dest) { dest = it; overlay = null }
                     }
                 }
             }
         ) { padding ->
             if (compact) {
-                Content(graph, dest, padding, onOpenPlayer = { showPlayer = true })
+                Content(
+                    graph, dest, overlay, padding,
+                    onOpenPlayer = { showPlayer = true },
+                    onOpenExtensions = { overlay = Overlay.EXTENSIONS },
+                    onOpenSettings = { overlay = Overlay.SETTINGS },
+                    onCloseOverlay = { overlay = null }
+                )
             } else {
                 Row(modifier = Modifier.fillMaxSize().padding(padding)) {
-                    Rail(dest) { dest = it }
+                    Rail(dest) { dest = it; overlay = null }
                     Box(modifier = Modifier.weight(1f)) {
-                        Content(graph, dest, androidx.compose.foundation.layout.PaddingValues(0.dp), onOpenPlayer = { showPlayer = true })
+                        Content(
+                            graph, dest, overlay,
+                            androidx.compose.foundation.layout.PaddingValues(0.dp),
+                            onOpenPlayer = { showPlayer = true },
+                            onOpenExtensions = { overlay = Overlay.EXTENSIONS },
+                            onOpenSettings = { overlay = Overlay.SETTINGS },
+                            onCloseOverlay = { overlay = null }
+                        )
                     }
                 }
             }
@@ -148,18 +163,46 @@ fun EchoApp(graph: AppGraph) {
 private fun Content(
     graph: AppGraph,
     dest: Dest,
+    overlay: Overlay?,
     padding: androidx.compose.foundation.layout.PaddingValues,
-    onOpenPlayer: () -> Unit
+    onOpenPlayer: () -> Unit,
+    onOpenExtensions: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onCloseOverlay: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-        when (dest) {
-            Dest.HOME -> HomeScreen(graph)
-            Dest.SEARCH -> SearchScreen(graph, onOpenPlayer)
-            Dest.LIBRARY -> LibraryScreen(graph, onOpenPlayer)
-            Dest.EXTENSIONS -> ExtensionsScreen(graph)
-            Dest.SETTINGS -> SettingsScreen(graph)
+    Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        if (overlay == null) {
+            EchoHeader(
+                title = dest.headerTitle(graph),
+                onOpenExtensions = onOpenExtensions,
+                onOpenSettings = onOpenSettings,
+                actions = {
+                    if (dest == Dest.LIBRARY) {
+                        IconButton(onClick = { FileImports.open() }) {
+                            Icon(Icons.Filled.FolderOpen, contentDescription = "Import audio files")
+                        }
+                    }
+                }
+            )
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (overlay) {
+                Overlay.EXTENSIONS -> ExtensionsScreen(graph, onBack = onCloseOverlay)
+                Overlay.SETTINGS -> SettingsScreen(graph, onBack = onCloseOverlay)
+                null -> when (dest) {
+                    Dest.HOME -> HomeScreen(graph)
+                    Dest.SEARCH -> SearchScreen(graph, onOpenPlayer)
+                    Dest.LIBRARY -> LibraryScreen(graph, onOpenPlayer)
+                }
+            }
         }
     }
+}
+
+private fun Dest.headerTitle(graph: AppGraph): String = when (this) {
+    Dest.HOME -> graph.extensions.activeExtension()?.name ?: "Echo"
+    Dest.SEARCH -> "Search"
+    Dest.LIBRARY -> "Library"
 }
 
 @Composable
@@ -169,18 +212,7 @@ private fun BottomBar(current: Dest, onSelect: (Dest) -> Unit) {
             NavigationBarItem(
                 selected = current == destination,
                 onClick = { onSelect(destination) },
-                icon = {
-                    Icon(
-                        imageVector = when (destination) {
-                            Dest.HOME -> Icons.Filled.Home
-                            Dest.SEARCH -> Icons.Filled.Search
-                            Dest.LIBRARY -> Icons.Filled.LibraryMusic
-                            Dest.EXTENSIONS -> Icons.Filled.Extension
-                            Dest.SETTINGS -> Icons.Filled.Settings
-                        },
-                        contentDescription = destination.label
-                    )
-                },
+                icon = { Icon(destination.icon, contentDescription = destination.label) },
                 label = { Text(destination.label) }
             )
         }
@@ -194,23 +226,19 @@ private fun Rail(current: Dest, onSelect: (Dest) -> Unit) {
             NavigationRailItem(
                 selected = current == destination,
                 onClick = { onSelect(destination) },
-                icon = {
-                    Icon(
-                        imageVector = when (destination) {
-                            Dest.HOME -> Icons.Filled.Home
-                            Dest.SEARCH -> Icons.Filled.Search
-                            Dest.LIBRARY -> Icons.Filled.LibraryMusic
-                            Dest.EXTENSIONS -> Icons.Filled.Extension
-                            Dest.SETTINGS -> Icons.Filled.Settings
-                        },
-                        contentDescription = destination.label
-                    )
-                },
+                icon = { Icon(destination.icon, contentDescription = destination.label) },
                 label = { Text(destination.label) }
             )
         }
     }
 }
+
+private val Dest.icon
+    get() = when (this) {
+        Dest.HOME -> Icons.Filled.Home
+        Dest.SEARCH -> Icons.Filled.Search
+        Dest.LIBRARY -> Icons.Filled.LibraryMusic
+    }
 
 /** Compact player bar shown above the navigation bar. */
 @Composable

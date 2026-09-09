@@ -65,17 +65,6 @@ fun LibraryScreen(graph: AppGraph, onOpenPlayer: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("Library") },
-            actions = {
-                IconButton(
-                    onClick = { FileImports.open() },
-                    modifier = Modifier.padding(end = 4.dp)
-                ) {
-                    Icon(Icons.Filled.FolderOpen, contentDescription = "Import audio files")
-                }
-            }
-        )
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
             TABS.forEachIndexed { index, title ->
                 Tab(

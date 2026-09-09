@@ -123,23 +123,23 @@ class PlaybackStallTracker(
             lastProgressPositionMs = positionMs
         }
 
-        // Forward progress → healthy, reset any pending window.
+        // Forward progress while not buffering → healthy, reset any pending window.
         if (!isBuffering && positionMs > lastProgressPositionMs) {
             lastProgressPositionMs = positionMs
             stalledSinceMs = null
             return false
         }
 
-        // The engine only counts as stalled when it is expected to be playing
-        // (a prepared, non-ended track). While paused or not buffering we must
-        // not fire, and any window that was building up is cancelled.
-        if (!isPlaying || !isBuffering) {
+        // Never recover merely because position is frozen while paused/seeking/loading.
+        // A stall is: playback is expected AND (buffering without progress OR
+        // the engine claims playing while the position does not advance).
+        if (!isPlaying) {
             stalledSinceMs = null
-            if (!isBuffering) lastProgressPositionMs = lastProgressPositionMs.coerceAtLeast(positionMs)
+            lastProgressPositionMs = lastProgressPositionMs.coerceAtLeast(positionMs)
             return false
         }
 
-        // Buffering without progress: start or keep the stall window.
+        // Playing (or buffering) without forward progress: start or keep the stall window.
         val now = nowMs()
         val since = stalledSinceMs ?: now.also { stalledSinceMs = it }
         if (now - since >= stallTimeoutMs) {

@@ -157,6 +157,7 @@ jobs:
           /usr/bin/zip -qry ../../Echo-iOS-app.zip Echo.app
           cd ../../..
           unzip -t build/ipa/Echo-iOS-unsigned.ipa > /dev/null
+          test -f build/ipa/Echo-iOS-unsigned.ipa
           echo "IPA OK"
           ls -la build/ipa
 
@@ -167,7 +168,7 @@ jobs:
         with:
           name: Echo-iOS-unsigned-ipa
           path: build/ipa/Echo-iOS-unsigned.ipa
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload Echo.app artifact
         if: always()

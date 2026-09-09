@@ -26,6 +26,18 @@ class DownloadRepairRegressionTest {
     }
 
     @Test
+    fun cleanupRemovesTempAndOrphanSidecars() = runTest {
+        val manager = DownloadRepairManager()
+        val file = createMusicStorageForIntegrityTest()
+        val tmp = dev.brahmkshatriya.echo.common.models.EchoFile(file.absolutePath + ".tmp")
+        tmp.write("partial".encodeToByteArray())
+        val deleted = manager.cleanupOrphans(listOf(tmp))
+        assertTrue(deleted.contains(tmp.absolutePath))
+        assertTrue(!tmp.exists())
+        file.delete()
+    }
+
+    @Test
     fun cleanupRemovesCorruptFiles() = runTest {
         val manager = DownloadRepairManager()
         val file = createMusicStorageForIntegrityTest()

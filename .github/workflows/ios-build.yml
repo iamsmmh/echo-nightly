@@ -1,0 +1,121 @@
+name: iOS IPA builder
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    paths:
+      - 'common/**'
+      - 'shared/**'
+      - 'core/**'
+      - 'domain/**'
+      - 'data/**'
+      - 'extensions/**'
+      - 'player/**'
+      - 'composeApp/**'
+      - 'app-ios/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/ios-build.yml'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Framework, archive, unsigned IPA
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    env:
+      VERSION_NAME: "3.0.${{ github.run_number }}"
+      BUILD_NUMBER: "${{ github.run_number }}"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Show Xcode
+        run: xcodebuild -version && xcodebuild -project app-ios/iosApp/iosApp.xcodeproj -list
+
+      - name: Compile Kotlin for iOS targets
+        run: >
+          python3 scripts/ci_run.py ./gradlew
+          :composeApp:compileKotlinIosArm64
+          :composeApp:compileKotlinIosSimulatorArm64
+          :composeApp:compileKotlinIosX64
+          :common:compileKotlinIosArm64 --stacktrace
+
+      - name: Link debug frameworks
+        run: >
+          python3 scripts/ci_run.py ./gradlew
+          :composeApp:linkDebugFrameworkIosSimulatorArm64
+          :composeApp:linkDebugFrameworkIosArm64 --stacktrace
+
+      - name: Shared native tests
+        run: >
+          python3 scripts/ci_run.py ./gradlew
+          :shared:iosSimulatorArm64Test :core:iosSimulatorArm64Test
+          :domain:iosSimulatorArm64Test :data:iosSimulatorArm64Test
+          :extensions:iosSimulatorArm64Test --stacktrace
+
+      - name: Archive unsigned app
+        run: >
+          python3 scripts/ci_run.py xcodebuild
+          -project app-ios/iosApp/iosApp.xcodeproj
+          -scheme iosApp
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath build/iosApp.xcarchive
+          -derivedDataPath build/DerivedData
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          MARKETING_VERSION="$VERSION_NAME"
+          CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+          archive
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Archive did not produce an .app"
+            exit 1
+          fi
+          mkdir -p dist build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/Echo.app
+          (cd build/ipa && /usr/bin/zip -qry Echo-iOS-unsigned.ipa Payload)
+          cp build/ipa/Echo-iOS-unsigned.ipa dist/Echo-iOS-unsigned.ipa
+          unzip -t dist/Echo-iOS-unsigned.ipa >/dev/null
+          test -f dist/Echo-iOS-unsigned.ipa
+          ls -la dist
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Echo-iOS-unsigned
+          path: dist/Echo-iOS-unsigned.ipa
+          if-no-files-found: error

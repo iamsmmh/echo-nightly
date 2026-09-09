@@ -68,7 +68,6 @@ fun HomeScreen(graph: AppGraph) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text(activeExtensionName(graph)) })
         when {
             shelves == null && error == null && recommended.isEmpty() -> Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -126,6 +125,8 @@ private fun HomeMessage(graph: AppGraph, message: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        dev.brahmkshatriya.echo.player.ui.EchoLogo(size = 72.dp)
+        Spacer(Modifier.height(16.dp))
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
         Button(onClick = { graph.extensions.setActiveExtension(graph.defaultExtensionId()) }) {
