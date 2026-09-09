@@ -1,13 +1,16 @@
 package dev.brahmkshatriya.echo.player.download
 
 import dev.brahmkshatriya.echo.common.models.EchoFile
-import dev.brahmkshatriya.echo.player.platform.sha256Hex
 
 /**
- * Download repair manager implementing verifyChecksum(), verifySize(),
- * repairDownload(), cleanupCorruptedFiles(), and corruption detection.
+ * Download repair facade over [DownloadIntegrityManager].
+ *
+ * Directory listing is not part of the frozen [EchoFile] API, so orphan cleanup
+ * operates on an explicit file list supplied by the caller.
  */
-class DownloadRepairManager {
+class DownloadRepairManager(
+    private val integrity: DownloadIntegrityManager = DownloadIntegrityManager()
+) {
 
     data class RepairResult(
         val repaired: Boolean,
@@ -15,87 +18,51 @@ class DownloadRepairManager {
         val error: String? = null
     )
 
-    fun verifyChecksum(file: EchoFile, expectedSha256: String? = null): Boolean {
-        if (!file.exists()) return false
-        if (expectedSha256 == null) return DownloadSupport.checksumValid(file)
-        val normalized = expectedSha256.trim().lowercase()
-        if (!Regex("[a-f0-9]{64}").matches(normalized)) return false
-        return file.sha256Hex() == normalized
-    }
+    fun verifyChecksum(file: EchoFile, expectedSha256: String? = null): Boolean =
+        integrity.verifyChecksum(file, expectedSha256)
 
     fun verifySize(file: EchoFile, expectedBytes: Long): Boolean =
-        expectedBytes >= 0 && file.exists() && file.length() == expectedBytes
+        integrity.verifySize(file, expectedBytes)
 
-    fun repairDownload(
+    suspend fun repairDownload(
         file: EchoFile,
         expected: DownloadIntegrityManager.Expected = DownloadIntegrityManager.Expected(),
         redownload: suspend (destination: EchoFile) -> Unit
     ): RepairResult {
-        try {
-            DownloadSupport.sidecarFor(file).delete()
-            file.delete()
-            val destination = EchoFile(file.absolutePath)
-            val result = runCatching {
-                kotlinx.coroutines.runBlocking { redownload(destination) }
-            }.getOrElse { throw it }
-            val sizeOk = expected.sizeBytes?.let { verifySize(file, it) } ?: file.exists()
-            val hashOk = expected.sha256?.let { verifyChecksum(file, it) } ?: true
-            if (!sizeOk || !hashOk || !DownloadSupport.looksLikeAudio(file.readPrefix(16))) {
-                file.delete()
-                return RepairResult(false, DownloadHealth.CORRUPT, "Replacement failed integrity validation")
-            }
-            DownloadSupport.recordChecksum(file)
-            return RepairResult(true, DownloadHealth.HEALTHY)
-        } catch (failure: Exception) {
-            file.delete()
-            DownloadSupport.sidecarFor(file).delete()
-            return RepairResult(false, DownloadHealth.CORRUPT, failure.message ?: "Repair failed")
-        }
+        val result = integrity.repairDownload(file, expected, redownload)
+        return RepairResult(result.repaired, result.health, result.error)
     }
-
-    suspend fun repairDownloadAsync(
-        file: EchoFile,
-        expected: DownloadIntegrityManager.Expected = DownloadIntegrityManager.Expected(),
-        redownload: suspend (destination: EchoFile) -> Unit
-    ): RepairResult = repairDownload(file, expected, redownload)
 
     fun cleanupCorruptedFiles(
         files: Iterable<EchoFile>,
         expectedSize: (EchoFile) -> Long = { -1 }
-    ): List<String> {
+    ): List<String> = integrity.cleanupCorruptedFiles(files, expectedSize)
+
+    fun detectCorruption(file: EchoFile, expectedSize: Long = -1, expectedSha256: String? = null): Boolean =
+        integrity.detectCorruption(file, expectedSha256, expectedSize)
+
+    fun validateCache(file: EchoFile): Boolean =
+        verifyChecksum(file) && verifySize(file, file.length())
+
+    /**
+     * Removes leftover `.tmp` / `.part` / `.lock` files and orphan integrity sidecars.
+     * Callers must pass the directory contents — [EchoFile] has no `listFiles()`.
+     */
+    fun cleanupOrphans(files: Iterable<EchoFile>): List<String> {
         val deleted = mutableListOf<String>()
         files.forEach { file ->
-            val health = DownloadHealthMonitor.inspect(file, expectedSize(file))
-            if (health == DownloadHealth.CORRUPT || health == DownloadHealth.PARTIAL) {
+            val name = file.name
+            val isTemp = name.endsWith(".tmp", ignoreCase = true) ||
+                name.endsWith(".part", ignoreCase = true) ||
+                name.endsWith(".lock", ignoreCase = true)
+            if (isTemp && file.exists()) {
                 file.delete()
-                DownloadSupport.sidecarFor(file).delete()
                 deleted += file.absolutePath
             }
-        }
-        return deleted
-    }
-
-    fun detectCorruption(file: EchoFile, expectedSize: Long = -1, expectedSha256: String? = null): Boolean {
-        val health = DownloadHealthMonitor.inspect(file, expectedSize)
-        return health == DownloadHealth.CORRUPT ||
-            (expectedSha256 != null && !verifyChecksum(file, expectedSha256))
-    }
-
-    fun validateCache(file: EchoFile): Boolean {
-        return verifyChecksum(file) && verifySize(file, file.length())
-    }
-
-    fun cleanupOrphans(filesDir: EchoFile): List<String> {
-        val deleted = mutableListOf<String>()
-        val files = filesDir.listFiles()?.toList() ?: emptyList()
-        files.forEach { file ->
-            val sidecar = DownloadSupport.sidecarFor(file)
-            if (!file.exists() && sidecar.exists()) {
+            if (integrity.isOrphanSidecar(file)) {
+                val sidecar = DownloadSupport.sidecarFor(file)
                 sidecar.delete()
                 deleted += sidecar.absolutePath
-            } else if (file.exists() && file.name.contains(".tmp")) {
-                file.delete()
-                deleted += file.absolutePath
             }
         }
         return deleted

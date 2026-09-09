@@ -106,6 +106,10 @@ for root in KT_ROOTS:
         if "TODO(" in text or "NotImplementedError" in text:
             if "/test/" not in path and "Test" not in os.path.basename(path):
                 err(f"{path}: production TODO(/NotImplementedError")
+        if "/commonMain/" in path.replace("\\", "/"):
+            code_only = strip_code(text)
+            if "System.currentTimeMillis" in code_only or "java.lang.System" in code_only:
+                err(f"{path}: JVM wall-clock API is not available in commonMain")
 
 # ----------------------------------------------------------------------------
 # 2. Gradle settings <-> module dirs

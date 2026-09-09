@@ -42,11 +42,32 @@ class PlayerActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         messageClient.addListener(messageListener)
+        refreshConnection()
         // Ask the phone for the freshest state on resume. If Echo's playback
         // service is cold on the phone it needs a moment to come up, so retry
         // once shortly after.
         send(Command.RequestState)
-        window.decorView.postDelayed({ send(Command.RequestState) }, 800)
+        window.decorView.postDelayed({
+            refreshConnection()
+            send(Command.RequestState)
+        }, 800)
+    }
+
+    private fun refreshConnection() {
+        runCatching {
+            Wearable.getNodeClient(this).connectedNodes
+                .addOnSuccessListener { nodes ->
+                    if (nodes.isEmpty()) showDisconnected()
+                }
+                .addOnFailureListener { showDisconnected() }
+        }.onFailure { showDisconnected() }
+    }
+
+    private fun showDisconnected() {
+        runOnUiThread {
+            findViewById<TextView>(R.id.text_title).text = getString(R.string.phone_disconnected)
+            findViewById<TextView>(R.id.text_artist).text = getString(R.string.phone_disconnected_hint)
+        }
     }
 
     override fun onStop() {

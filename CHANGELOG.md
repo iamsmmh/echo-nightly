@@ -2,6 +2,13 @@
 
 ## Unreleased — production stabilization
 
+- Fixed Kotlin Multiplatform compilation: recovery helpers no longer call JVM-only wall-clock APIs from `commonMain`.
+- Watchdog recovery now re-prepares, then re-resolves expired streams, then skips with a bounded consecutive-skip cap.
+- Stream resolution walks alternate servers instead of stopping at the first failure.
+- Settings import is parse → validate → migrate → apply; exported documents never include the Subsonic password.
+- Android Auto no longer crashes on stale media IDs; Wear OS shows a disconnected-phone state.
+- Added `android-build.yml` and `ios-build.yml` production builders; release artifacts use deterministic names.
+
 - Added lifecycle-safe Cast session recovery, queue/metadata/position synchronization, and lossless return-to-phone queue conversion.
 - Hardened iOS AirPlay, AirPods, Bluetooth, and speaker route monitoring across route and media-service resets.
 - Added reusable stream recovery state/backoff policy, SHA-256 download repair, incremental offline indexing, equal-power crossfade scheduling, and clipping-safe ReplayGain analysis with common tests.

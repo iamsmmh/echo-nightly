@@ -71,6 +71,8 @@ class PlaybackController(
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
     private var resolveJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var consecutiveAutoSkips: Int = 0
     private var volume: Float = 1f
     private var speed: Float = 1f
 
@@ -161,6 +163,7 @@ class PlaybackController(
                 )
                 if (engineState.isPlaying && startedItemId != current.id) {
                     startedItemId = current.id
+                    consecutiveAutoSkips = 0
                     onTrackStarted?.invoke(current)
                 }
                 if (!engineState.suppressed) playRequested = engineState.playWhenReady
@@ -232,12 +235,11 @@ class PlaybackController(
     private fun handleStall(currentId: String) {
         val item = _state.value.current?.takeIf { it.id == currentId }
             ?: _state.value.queue.firstOrNull { it.id == currentId }
-        // Only attempt an automatic recovery for remote streaming sources.
-        val request = lastRequest?.takeIf { preparedItemId == currentId } ?: return
-        if (!lastRequestWasRemote || item == null) {
-            if (item != null) {
-                surfacePlaybackFailure(item, EchoError.Playback("Playback stalled.", null))
-            }
+        val request = lastRequest?.takeIf { preparedItemId == currentId }
+        if (item == null) return
+        // Local files that stall are a permanent media problem, not a stream expiry.
+        if (!lastRequestWasRemote) {
+            surfacePlaybackFailure(item, EchoError.Playback("Playback stalled.", null))
             return
         }
         if (watchdogRecoveredTrackId != currentId) {
@@ -245,21 +247,49 @@ class PlaybackController(
             watchdogRecoveriesForTrack = 0
         }
         watchdogRecoveriesForTrack++
-        if (watchdogRecoveriesForTrack > retryPolicy.maxAttempts) {
-            logger.warn(TAG, "Watchdog gave up on '$currentId' after $watchdogRecoveriesForTrack recoveries")
-            surfacePlaybackFailure(item, EchoError.Playback("Playback kept stalling.", null))
-            return
-        }
-        logger.info(TAG, "Watchdog: re-preparing stalled track '$currentId' (recovery $watchdogRecoveriesForTrack)")
-        scope.launch {
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
             if (!playRequested || _state.value.current?.id != currentId) return@launch
             try {
-                val resumed = request.copy(startPositionMs = _state.value.positionMs)
-                engine.prepare(resumed)
-                lastRequest = resumed
-                applyEngineVolume()
-                engine.setPlaybackSpeed(speed)
-                engine.play()
+                when (watchdogRecoveriesForTrack) {
+                    1 -> {
+                        val existing = request ?: run {
+                            startCurrent(item, _state.value.positionMs)
+                            return@launch
+                        }
+                        logger.info(TAG, "Watchdog: re-preparing stalled track '$currentId'")
+                        val resumed = existing.copy(startPositionMs = _state.value.positionMs)
+                        engine.prepare(resumed)
+                        lastRequest = resumed
+                        applyEngineVolume()
+                        engine.setPlaybackSpeed(speed)
+                        engine.play()
+                    }
+                    2 -> {
+                        // Drop the cached stream URL and re-resolve (URLs expire).
+                        logger.info(TAG, "Watchdog: refreshing stream for '$currentId'")
+                        lastRequest = null
+                        preparedItemId = null
+                        startCurrent(item, _state.value.positionMs)
+                    }
+                    else -> {
+                        if (consecutiveAutoSkips >= MAX_CONSECUTIVE_AUTO_SKIPS) {
+                            logger.warn(TAG, "Watchdog: too many consecutive skips, stopping")
+                            surfacePlaybackFailure(item, EchoError.Playback("Playback kept stalling.", null))
+                            return@launch
+                        }
+                        val nextItem = queue.advance(userInitiated = false)
+                        if (nextItem == null) {
+                            surfacePlaybackFailure(item, EchoError.Playback("Playback kept stalling.", null))
+                        } else {
+                            consecutiveAutoSkips++
+                            logger.warn(TAG, "Watchdog: skipping stalled track '$currentId'")
+                            startCurrent(nextItem)
+                        }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (failure: Exception) {
                 surfacePlaybackFailure(item, failure.toPlaybackError())
             }
@@ -360,6 +390,7 @@ class PlaybackController(
 
     fun next(userInitiated: Boolean = true) {
         resolveJob?.cancel()
+        recoveryJob?.cancel()
         playRequested = true
         scope.launch {
             val next = queue.advance(userInitiated)
@@ -416,8 +447,10 @@ class PlaybackController(
     }
 
     fun cycleRepeat() {
-        val mode = queue.cycleRepeatMode()
-        _state.value = _state.value.copy(repeatMode = mode)
+        scope.launch {
+            val mode = queue.cycleRepeatMode()
+            _state.value = _state.value.copy(repeatMode = mode)
+        }
     }
 
     fun jumpTo(itemId: String) {
@@ -456,6 +489,8 @@ class PlaybackController(
     fun clearQueue() {
         resolveJob?.cancel()
         resolveJob = null
+        recoveryJob?.cancel()
+        recoveryJob = null
         sessionClaimed = true
         savedSession = null
         playRequested = false
@@ -490,6 +525,11 @@ class PlaybackController(
 
     private suspend fun startCurrent(item: QueueItem, startPositionMs: Long = 0) {
         resolveJob?.cancel()
+        val caller = kotlinx.coroutines.coroutineContext[Job]
+        if (recoveryJob != null && recoveryJob != caller) {
+            recoveryJob?.cancel()
+            recoveryJob = null
+        }
         engine.pause()
         preparedItemId = null
         lastRequest = null
@@ -662,6 +702,7 @@ class PlaybackController(
     private companion object {
         const val TAG = "PlaybackController"
         const val WATCHDOG_TICK_MS = 2_000L
+        const val MAX_CONSECUTIVE_AUTO_SKIPS = 3
     }
 }
 

@@ -53,7 +53,7 @@ jobs:
         with:
           name: Echo-Android-pr-${{ github.event.pull_request.number || github.run_number }}
           path: app-android/build/outputs/apk/release/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload build log
         if: failure()

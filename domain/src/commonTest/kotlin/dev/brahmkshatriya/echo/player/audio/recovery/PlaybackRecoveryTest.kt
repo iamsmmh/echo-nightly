@@ -217,6 +217,15 @@ class PlaybackStallTrackerTest {
     }
 
     @Test
+    fun `stall fires when playing without position progress even if not buffering`() {
+        val clock = Clock(0)
+        val t = tracker(1_000, clock)
+        assertFalse(t.onTick("a", isPlaying = true, isBuffering = false, positionMs = 40))
+        clock.timeMs = 1_000
+        assertTrue(t.onTick("a", isPlaying = true, isBuffering = false, positionMs = 40))
+    }
+
+    @Test
     fun `small default construction is allowed`() {
         val clock = Clock(0)
         val t = tracker(100, clock)

@@ -154,6 +154,14 @@ class SettingsRepository(
         }.isSuccess) pending = remaining
     }
 
+    fun exportJson(): String = SettingsDocuments.export(settings)
+
+    /** Parse → validate → migrate → apply. Invalid input leaves existing settings untouched. */
+    fun importJson(raw: String) {
+        val imported = SettingsDocuments.import(raw, current = settings)
+        update { imported }
+    }
+
     fun addListener(listener: (PlayerSettings) -> Unit) { listeners.add(listener); listener(settings) }
     fun removeListener(listener: (PlayerSettings) -> Unit) { listeners.remove(listener) }
 
