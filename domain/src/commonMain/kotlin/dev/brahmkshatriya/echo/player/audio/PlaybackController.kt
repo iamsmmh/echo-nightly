@@ -6,6 +6,7 @@ import dev.brahmkshatriya.echo.player.audio.recovery.backoffDelayMs
 import dev.brahmkshatriya.echo.player.audio.recovery.isTransientNetworkFailure
 import dev.brahmkshatriya.echo.player.domain.EchoError
 import dev.brahmkshatriya.echo.player.domain.EchoLogger
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -525,7 +526,7 @@ class PlaybackController(
 
     private suspend fun startCurrent(item: QueueItem, startPositionMs: Long = 0) {
         resolveJob?.cancel()
-        val caller = kotlinx.coroutines.coroutineContext[Job]
+        val caller = coroutineContext[Job]
         if (recoveryJob != null && recoveryJob != caller) {
             recoveryJob?.cancel()
             recoveryJob = null

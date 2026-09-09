@@ -10,6 +10,12 @@ permissions:
 
 jobs:
   dependency-review:
+    # GitHub's dependency-review-action requires the repository Dependency
+    # graph (Settings → Code security). This repo cannot enable that from
+    # code, so the job only runs when an admin has set
+    # DEPENDENCY_REVIEW_ENABLED=true. Otherwise skip so the PR is not blocked
+    # by a platform setting we cannot change here.
+    if: vars.DEPENDENCY_REVIEW_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
