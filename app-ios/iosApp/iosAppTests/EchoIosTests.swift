@@ -10,6 +10,14 @@ import ComposeApp
  */
 final class EchoIosTests: XCTestCase {
 
+    /// The Echo brand mark is bundled so the home-screen icon and launch screen match Android.
+    func testEchoLogoAssetIsPresent() {
+        XCTAssertNotNil(
+            UIImage(named: "EchoLogo", in: Bundle.main, compatibleWith: nil),
+            "EchoLogo is missing from the app asset catalog"
+        )
+    }
+
     /// The Compose Multiplatform root controller builds successfully.
     func testComposeRootLoads() {
         let controller = MainViewKt.MainViewController()

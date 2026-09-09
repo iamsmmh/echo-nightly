@@ -34,9 +34,13 @@
 	<array>
 		<string>audio</string>
 	</array>
-	<!-- Empty launch screen dictionary: full-size, edge-to-edge on all devices -->
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>EchoLogo</string>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>

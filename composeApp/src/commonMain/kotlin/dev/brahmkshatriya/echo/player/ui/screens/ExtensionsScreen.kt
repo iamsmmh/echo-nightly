@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExtensionsScreen(graph: AppGraph) {
+fun ExtensionsScreen(graph: AppGraph, onBack: (() -> Unit)? = null) {
     val extensions by graph.extensions.extensions.collectAsState()
     var settings by remember { mutableStateOf(graph.settings.settings) }
     var pingResult by remember { mutableStateOf<String?>(null) }
@@ -56,7 +56,19 @@ fun ExtensionsScreen(graph: AppGraph) {
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        TopAppBar(title = { Text("Extensions") })
+        TopAppBar(
+            title = { Text("Extensions") },
+            navigationIcon = {
+                if (onBack != null) {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                }
+            }
+        )
 
         Text(
             "Music sources",

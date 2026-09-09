@@ -38,14 +38,26 @@ import dev.brahmkshatriya.echo.player.platform.audioCapabilities
 /** Shared settings screen (platform specific options are added per platform). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(graph: AppGraph) {
+fun SettingsScreen(graph: AppGraph, onBack: (() -> Unit)? = null) {
     val settings by graph.settings.state.collectAsState()
     val capabilities = remember { audioCapabilities() }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
     ) {
-        TopAppBar(title = { Text("Settings") })
+        TopAppBar(
+            title = { Text("Settings") },
+            navigationIcon = {
+                if (onBack != null) {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                }
+            }
+        )
 
         SettingsSection("Appearance")
         ToggleRow(

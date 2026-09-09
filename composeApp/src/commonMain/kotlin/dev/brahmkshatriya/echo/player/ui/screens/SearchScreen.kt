@@ -66,7 +66,6 @@ fun SearchScreen(graph: AppGraph, onOpenPlayer: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Search") })
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },

@@ -7,19 +7,15 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val Indigo = Color(0xFF6C5CE7)
-private val IndigoDark = Color(0xFF4834B5)
-private val Accent = Color(0xFF00CEC9)
-
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFBBAEF2),
-    onPrimary = Color(0xFF281A5E),
-    primaryContainer = IndigoDark,
-    onPrimaryContainer = Color(0xFFE5DEFF),
-    secondary = Accent,
-    onSecondary = Color(0xFF00302E),
-    secondaryContainer = Color(0xFF004D4A),
-    onSecondaryContainer = Color(0xFF62FBF5),
+    primary = EchoCyan,
+    onPrimary = Color(0xFF00344A),
+    primaryContainer = Color(0xFF004D6A),
+    onPrimaryContainer = EchoCyanHighlight,
+    secondary = Color(0xFF7FD4FF),
+    onSecondary = Color(0xFF00344A),
+    secondaryContainer = Color(0xFF004D6A),
+    onSecondaryContainer = EchoCyanHighlight,
     background = Color(0xFF121212),
     onBackground = Color(0xFFE4E1E9),
     surface = Color(0xFF1C1B1F),
@@ -30,20 +26,20 @@ private val DarkColors = darkColorScheme(
 )
 
 private val LightColors = lightColorScheme(
-    primary = Indigo,
+    primary = Color(0xFF0077B3),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE5DEFF),
-    onPrimaryContainer = Color(0xFF22005D),
-    secondary = Color(0xFF006A67),
+    primaryContainer = EchoCyanHighlight,
+    onPrimaryContainer = Color(0xFF001E2C),
+    secondary = Color(0xFF00658C),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFF9CF1EA),
-    onSecondaryContainer = Color(0xFF00201E),
-    background = Color(0xFFFDF8FF),
+    secondaryContainer = Color(0xFFC8ECFF),
+    onSecondaryContainer = Color(0xFF001E2C),
+    background = Color(0xFFF7FBFF),
     onBackground = Color(0xFF1C1B1F),
-    surface = Color(0xFFFDF8FF),
+    surface = Color(0xFFF7FBFF),
     onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE7E0F3),
-    onSurfaceVariant = Color(0xFF49454F),
+    surfaceVariant = Color(0xFFDCEAF3),
+    onSurfaceVariant = Color(0xFF40484E),
     error = Color(0xFFB3261E)
 )
 
